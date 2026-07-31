@@ -1,0 +1,85 @@
+POST http://localhost:5000/api/teams/register
+Headers cotent-type application-json
+
+request:
+{
+  "teamName": "Code Warriors",
+  "domainId": 1,
+  "declarationAccepted": true,
+  "members": [
+    {
+      "role": "LEADER",
+      "fullName": "Yaman Khan",
+      "email": "yaman@example.com",
+      "mobileNumber": "9876543210",
+      "college": {
+        "collegeName": "Example Engineering College"
+      },
+      "region": "Mumbai",
+      "branch": "Computer Engineering",
+      "yearOfStudy": 4
+    },
+    {
+      "role": "MEMBER",
+      "fullName": "Member Two",
+      "email": "member2@example.com",
+      "mobileNumber": "9876543211",
+      "college": {
+        "collegeName": "Example Engineering College"
+      },
+      "region": "Mumbai",
+      "branch": "Computer Engineering",
+      "yearOfStudy": 4
+    },
+    {
+      "role": "MEMBER",
+      "fullName": "Member Three",
+      "email": "member3@example.com",
+      "mobileNumber": "9876543212",
+      "college": {
+        "collegeName": "Example Engineering College"
+      },
+      "region": "Mumbai",
+      "branch": "Computer Engineering",
+      "yearOfStudy": 4
+    }
+  ]
+}
+
+response:
+
+{
+    "success": true,
+    "message": "Team registration created successfully. All members must verify their email addresses to continue.",
+    "data": {
+        "teamId": "TEAM-177722048695",
+        "registrationId": "REG-177722044172",
+        "teamName": "Code Warriors",
+        "status": "DRAFT",
+        "members": [
+            {
+                "name": "Yaman Khan",
+                "email": "yaman@example.com",
+                "emailVerified": false
+            },
+            {
+                "name": "Member Two",
+                "email": "member2@example.com",
+                "emailVerified": false
+            },
+            {
+                "name": "Member Three",
+                "email": "member3@example.com",
+                "emailVerified": false
+            }
+        ]
+    }
+}
+
+POST http://localhost:5000/api/teams/TEAM-XXXXXXXX/send-verification
+
+{
+  "success": true,
+  "teamId": "TEAM-XXXXXXXX",
+  "message": "Verification emails sent successfully"
+}

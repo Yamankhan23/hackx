@@ -99,10 +99,13 @@ export const teamMembers = pgTable("team_members", {
 	yearOfStudy: smallint("year_of_study").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	emailVerificationTokenHash: text("email_verification_token_hash"),
+	emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	index("idx_team_members_college_id").using("btree", table.collegeId.asc().nullsLast().op("int8_ops")),
 	index("idx_team_members_email").using("btree", table.email.asc().nullsLast().op("text_ops")),
 	index("idx_team_members_team_id").using("btree", table.teamId.asc().nullsLast().op("int8_ops")),
+	index("team_members_email_verification_token_hash_idx").using("btree", table.emailVerificationTokenHash.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.collegeId],
 			foreignColumns: [colleges.id],
@@ -113,6 +116,7 @@ export const teamMembers = pgTable("team_members", {
 			foreignColumns: [teams.id],
 			name: "team_members_team_id_fkey"
 		}).onDelete("cascade"),
+	unique("team_members_email_unique").on(table.email),
 	check("team_members_year_of_study_check", sql`(year_of_study >= 1) AND (year_of_study <= 6)`),
 ]);
 

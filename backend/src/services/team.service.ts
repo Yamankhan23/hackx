@@ -7,6 +7,14 @@ import {
   teams,
 } from "../db/migrations/schema";
 import type { RegisterTeamInput } from "../validators/team.validator";
+import {
+  generateVerificationToken,
+  hashVerificationToken,
+} from "../lib/verification-token";
+
+import { sendVerificationEmail } from "./email.service";
+
+const VERIFICATION_EXPIRY_HOURS = 24;
 
 const generateReadableId = (prefix: string) => {
   const timestamp = Date.now().toString().slice(-8);
@@ -189,4 +197,58 @@ export const registerTeam = async (input: RegisterTeamInput) => {
       })),
     };
   });
+};
+
+export const sendTeamVerificationEmails = async (
+  teamReadableId: string
+) => {
+  const team = await db.query.teams.findFirst({
+    where: (teams, { eq }) =>
+      eq(teams.teamId, teamReadableId),
+  });
+
+  if (!team) {
+    throw new Error("Team not found");
+  }
+
+  const members = await db.query.teamMembers.findMany({
+    where: (teamMembers, { eq }) =>
+      eq(teamMembers.teamId, team.id),
+  });
+
+  if (members.length === 0) {
+    throw new Error("No team members found");
+  }
+
+  for (const member of members) {
+    if (member.emailVerifiedAt) {
+      continue;
+    }
+
+    const token = generateVerificationToken();
+    const tokenHash = hashVerificationToken(token);
+
+    const expiresAt = new Date(
+  Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+).toISOString();
+
+    await db
+      .update(teamMembers)
+      .set({
+        emailVerificationTokenHash: tokenHash,
+        emailVerificationExpiresAt: expiresAt,
+      })
+      .where(eq(teamMembers.id, member.id));
+
+    await sendVerificationEmail({
+      email: member.email,
+      name: member.fullName,
+      verificationToken: token,
+    });
+  }
+
+  return {
+    teamId: team.teamId,
+    message: "Verification emails sent successfully",
+  };
 };

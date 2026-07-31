@@ -72,3 +72,6 @@ backend/dist/
 # Optional: ignore local database or uploads
 uploads/
 data/
+
+TODO.md
+tp.html

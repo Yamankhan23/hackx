@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import { registerTeamSchema } from "../validators/team.validator";
 import { registerTeam } from "../services/team.service";
+import { sendTeamVerificationEmails } from "../services/team.service";
 
 export const registerTeamController = async (
   req: Request,
@@ -37,6 +38,39 @@ export const registerTeamController = async (
     return res.status(400).json({
       success: false,
       message,
+    });
+  }
+};
+
+export const sendVerificationEmailsController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { teamId } = req.params;
+
+    if (typeof teamId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID",
+      });
+    }
+
+    const result = await sendTeamVerificationEmails(teamId);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("Send verification error:", error);
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to send verification emails",
     });
   }
 };
