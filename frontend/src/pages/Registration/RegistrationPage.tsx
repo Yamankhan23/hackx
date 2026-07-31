@@ -158,6 +158,10 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
                 register={form.register}
                 errors={form.formState.errors}
                 domains={domains}
+                value={form.watch("domainId")}
+                onChange={(value) =>
+                  form.setValue("domainId", value, { shouldValidate: true })
+                }
               />
             ) : null}
 

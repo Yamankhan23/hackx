@@ -1,15 +1,20 @@
 import type { FieldErrors, UseFormRegister } from "react-hook-form";
 import type { RegistrationFormValues } from "../../schemas/registration.schema";
 import type { Domain } from "../../types/registration";
+import { DomainSelect } from "./DomainSelect";
 
 export function TeamDetailsStep({
   register,
   errors,
   domains,
+  value,
+  onChange,
 }: {
   register: UseFormRegister<RegistrationFormValues>;
   errors: FieldErrors<RegistrationFormValues>;
   domains: Domain[];
+  value: string;
+  onChange: (value: string) => void;
 }) {
   return (
     <div className="grid gap-4">
@@ -25,18 +30,15 @@ export function TeamDetailsStep({
 
       <label className="grid gap-1.5">
         <span className="text-xs font-medium text-slate-300">Domain</span>
-        <select
-          {...register("domainId")}
-          className="h-12 rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
-        >
-          <option value="">Choose domain</option>
-          {domains.map((domain) => (
-            <option key={domain.id} value={String(domain.id)}>
-              {domain.name}
-            </option>
-          ))}
-        </select>
-        <span className="min-h-4 text-xs text-rose-300">{errors.domainId?.message}</span>
+        <DomainSelect
+          domains={domains}
+          value={value}
+          onChange={onChange}
+          error={errors.domainId?.message}
+        />
+
+        {/* Hidden field to keep domainId registered for validation/submission */}
+        <input type="hidden" {...register("domainId")} />
       </label>
     </div>
   );
