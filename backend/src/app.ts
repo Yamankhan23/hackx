@@ -5,6 +5,7 @@ import healthRoutes from "./routes/health.routes";
 import teamRoutes from "./routes/team.routes";
 import domainRoutes from "./routes/domain.routes";
 import collegeRoutes from "./routes/college.routes";
+import adminRoutes from "./routes/admin.routes";
 
 const app = express();
 
@@ -40,5 +41,5 @@ app.use("/api/health", healthRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/domains", domainRoutes);
 app.use("/api/colleges", collegeRoutes);
-
+app.use("/api/admin", adminRoutes);
 export default app;

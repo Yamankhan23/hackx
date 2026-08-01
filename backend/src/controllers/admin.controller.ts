@@ -1,0 +1,523 @@
+import type { Request, Response } from "express";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+
+import { db } from "../db";
+import {
+  admins,
+  colleges,
+  domains,
+  payments,
+  problemStatements,
+  rounds,
+  teamMembers,
+  teams,
+} from "../db/migrations/schema";
+import { adminLoginSchema } from "../validators/admin.validator";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+
+const pagination = (req: Request) => {
+  const page = Math.max(Number(req.query.page ?? 1), 1);
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 100);
+  const offset = (page - 1) * limit;
+  return { page, limit, offset };
+};
+
+const like = (value?: string): SQL | undefined =>
+  value ? ilike(sql`${sql.raw("COALESCE")}(${sql.placeholder("x")}, '')`, `%${value}%`) : undefined;
+
+const safeInt = (value: unknown, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+export const adminLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const validation = adminLoginSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid login data",
+        errors: validation.error.issues,
+      });
+      return;
+    }
+
+    const { email, password } = validation.data;
+    const [admin] = await db.select().from(admins).where(eq(admins.email, email)).limit(1);
+
+    if (!admin || !admin.isActive) {
+      res.status(401).json({ success: false, message: "Invalid email or password" });
+      return;
+    }
+
+    const passwordValid = await bcrypt.compare(password, admin.passwordHash);
+    if (!passwordValid) {
+      res.status(401).json({ success: false, message: "Invalid email or password" });
+      return;
+    }
+
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      res.status(500).json({ success: false, message: "Server configuration error" });
+      return;
+    }
+
+    const token = jwt.sign({ adminId: admin.id, role: admin.role }, jwtSecret, { expiresIn: "8h" });
+
+    await db.update(admins).set({ lastLoginAt: new Date().toISOString() }).where(eq(admins.id, admin.id));
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        admin: {
+          id: admin.id,
+          adminId: admin.adminId,
+          name: admin.name,
+          email: admin.email,
+          role: admin.role,
+        },
+        token,
+      },
+    });
+  } catch (error) {
+    console.error("Admin login error:", error);
+    res.status(500).json({ success: false, message: "Failed to login" });
+  }
+};
+
+export const getDashboard = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const [
+      totalTeams,
+      totalParticipants,
+      verifiedParticipants,
+      totalRegistrations,
+      confirmedRegistrations,
+      pendingRegistrations,
+      cancelledRegistrations,
+      totalPayments,
+      successfulPayments,
+      pendingPayments,
+      failedPayments,
+      domainBreakdown,
+      recentRegistrations,
+    ] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(teams),
+      db.select({ count: sql<number>`count(*)::int` }).from(teamMembers),
+      db.select({ count: sql<number>`count(*)::int` }).from(teamMembers).where(sql`${teamMembers.emailVerifiedAt} is not null`),
+      db.select({ count: sql<number>`count(*)::int` }).from(teams),
+      db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "CONFIRMED")),
+      db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "DRAFT")),
+      db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "CANCELLED")),
+      db.select({ count: sql<number>`count(*)::int` }).from(payments),
+      db.select({ count: sql<number>`count(*)::int` }).from(payments).where(eq(payments.status, "SUCCESS")),
+      db.select({ count: sql<number>`count(*)::int` }).from(payments).where(or(eq(payments.status, "CREATED"), eq(payments.status, "PENDING"))),
+      db.select({ count: sql<number>`count(*)::int` }).from(payments).where(eq(payments.status, "FAILED")),
+      db
+        .select({
+          domainId: domains.id,
+          domainName: domains.name,
+          total: sql<number>`count(${teams.id})::int`,
+        })
+        .from(teams)
+        .innerJoin(domains, eq(domains.id, teams.domainId))
+        .groupBy(domains.id, domains.name)
+        .orderBy(desc(sql`count(${teams.id})`)),
+      db
+        .select({
+          id: teams.id,
+          teamId: teams.teamId,
+          registrationId: teams.registrationId,
+          teamName: teams.teamName,
+          status: teams.status,
+          createdAt: teams.createdAt,
+          domainName: domains.name,
+        })
+        .from(teams)
+        .innerJoin(domains, eq(domains.id, teams.domainId))
+        .orderBy(desc(teams.createdAt))
+        .limit(10),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalTeams: totalTeams[0]?.count ?? 0,
+        totalParticipants: totalParticipants[0]?.count ?? 0,
+        verifiedParticipants: verifiedParticipants[0]?.count ?? 0,
+        unverifiedParticipants: Math.max((totalParticipants[0]?.count ?? 0) - (verifiedParticipants[0]?.count ?? 0), 0),
+        totalRegistrations: totalRegistrations[0]?.count ?? 0,
+        confirmedRegistrations: confirmedRegistrations[0]?.count ?? 0,
+        pendingRegistrations: pendingRegistrations[0]?.count ?? 0,
+        cancelledRegistrations: cancelledRegistrations[0]?.count ?? 0,
+        totalPayments: totalPayments[0]?.count ?? 0,
+        successfulPayments: successfulPayments[0]?.count ?? 0,
+        pendingPayments: pendingPayments[0]?.count ?? 0,
+        failedPayments: failedPayments[0]?.count ?? 0,
+        registrationsByDomain: domainBreakdown,
+        recentRegistrations,
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard error:", error);
+    res.status(500).json({ success: false, message: "Failed to load dashboard" });
+  }
+};
+
+export const getTeams = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page, limit, offset } = pagination(req);
+    const search = String(req.query.search ?? "").trim();
+    const status = String(req.query.status ?? "").trim();
+    const filters: SQL[] = [];
+    if (status) filters.push(eq(teams.status, status as never));
+    if (search) {
+      filters.push(
+        or(
+          ilike(teams.teamId, `%${search}%`),
+          ilike(teams.registrationId, `%${search}%`),
+          ilike(teams.teamName, `%${search}%`),
+          ilike(teamMembers.email, `%${search}%`)
+        )!
+      );
+    }
+
+    const whereClause = filters.length ? and(...filters) : undefined;
+    const rows = await db
+      .select({
+        id: teams.id,
+        teamId: teams.teamId,
+        registrationId: teams.registrationId,
+        teamName: teams.teamName,
+        status: teams.status,
+        createdAt: teams.createdAt,
+        domainName: domains.name,
+        memberCount: sql<number>`count(${teamMembers.id})::int`,
+      })
+      .from(teams)
+      .innerJoin(domains, eq(domains.id, teams.domainId))
+      .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+      .where(whereClause)
+      .groupBy(teams.id, domains.name)
+      .orderBy(desc(teams.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    res.json({ success: true, data: rows, meta: { page, limit } });
+  } catch (error) {
+    console.error("Get teams error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch teams" });
+  }
+};
+
+export const getTeamById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const teamId = String(req.params.teamId);
+    const [team] = await db
+      .select({
+        id: teams.id,
+        teamId: teams.teamId,
+        registrationId: teams.registrationId,
+        teamName: teams.teamName,
+        status: teams.status,
+        createdAt: teams.createdAt,
+        domainName: domains.name,
+      })
+      .from(teams)
+      .innerJoin(domains, eq(domains.id, teams.domainId))
+      .where(or(eq(teams.teamId, teamId), eq(teams.registrationId, teamId))!)
+      .limit(1);
+
+    if (!team) {
+      res.status(404).json({ success: false, message: "Team not found" });
+      return;
+    }
+
+    const members = await db
+      .select({
+        id: teamMembers.id,
+        role: teamMembers.role,
+        fullName: teamMembers.fullName,
+        email: teamMembers.email,
+        emailVerified: teamMembers.emailVerifiedAt,
+        collegeName: colleges.name,
+        branch: teamMembers.branch,
+        yearOfStudy: teamMembers.yearOfStudy,
+        region: teamMembers.region,
+      })
+      .from(teamMembers)
+      .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
+      .where(eq(teamMembers.teamId, team.id));
+
+    res.json({ success: true, data: { ...team, members } });
+  } catch (error) {
+    console.error("Get team error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch team" });
+  }
+};
+
+export const getParticipants = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page, limit, offset } = pagination(req);
+    const search = String(req.query.search ?? "").trim();
+    const teamId = String(req.query.teamId ?? "").trim();
+    const rows = await db
+      .select({
+        id: teamMembers.id,
+        teamId: teams.teamId,
+        name: teamMembers.fullName,
+        email: teamMembers.email,
+        emailVerified: teamMembers.emailVerifiedAt,
+        role: teamMembers.role,
+        college: colleges.name,
+        branch: teamMembers.branch,
+        yearOfStudy: teamMembers.yearOfStudy,
+        region: teamMembers.region,
+        teamName: teams.teamName,
+      })
+      .from(teamMembers)
+      .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
+      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+      .where(
+        and(
+          search ? or(ilike(teamMembers.fullName, `%${search}%`), ilike(teamMembers.email, `%${search}%`))! : undefined,
+          teamId ? eq(teams.teamId, teamId) : undefined
+        )
+      )
+      .orderBy(desc(teamMembers.createdAt))
+      .limit(limit)
+      .offset(offset);
+    res.json({ success: true, data: rows, meta: { page, limit } });
+  } catch (error) {
+    console.error("Get participants error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch participants" });
+  }
+};
+
+export const getParticipantById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    const [participant] = await db
+      .select({
+        id: teamMembers.id,
+        name: teamMembers.fullName,
+        email: teamMembers.email,
+        emailVerified: teamMembers.emailVerifiedAt,
+        role: teamMembers.role,
+        college: colleges.name,
+        branch: teamMembers.branch,
+        yearOfStudy: teamMembers.yearOfStudy,
+        region: teamMembers.region,
+        teamName: teams.teamName,
+      })
+      .from(teamMembers)
+      .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
+      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+      .where(eq(teamMembers.id, id))
+      .limit(1);
+    if (!participant) {
+      res.status(404).json({ success: false, message: "Participant not found" });
+      return;
+    }
+    res.json({ success: true, data: participant });
+  } catch {
+    res.status(500).json({ success: false, message: "Failed to fetch participant" });
+  }
+};
+
+export const getPayments = async (req: Request, res: Response): Promise<void> => {
+  const { page, limit, offset } = pagination(req);
+  const rows = await db
+    .select({
+      id: payments.id,
+      paymentId: payments.paymentId,
+      teamName: teams.teamName,
+      amount: payments.amount,
+      currency: payments.currency,
+      status: payments.status,
+      razorpayOrderId: payments.razorpayOrderId,
+      razorpayPaymentId: payments.razorpayPaymentId,
+      paidAt: payments.paidAt,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .innerJoin(teams, eq(teams.id, payments.teamId))
+    .orderBy(desc(payments.createdAt))
+    .limit(limit)
+    .offset(offset);
+  res.json({ success: true, data: rows, meta: { page, limit } });
+};
+
+export const getPaymentById = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [payment] = await db
+    .select({
+      id: payments.id,
+      paymentId: payments.paymentId,
+      teamName: teams.teamName,
+      amount: payments.amount,
+      currency: payments.currency,
+      status: payments.status,
+      razorpayOrderId: payments.razorpayOrderId,
+      razorpayPaymentId: payments.razorpayPaymentId,
+      paidAt: payments.paidAt,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .innerJoin(teams, eq(teams.id, payments.teamId))
+    .where(eq(payments.id, id))
+    .limit(1);
+  if (!payment) {
+    res.status(404).json({ success: false, message: "Payment not found" });
+    return;
+  }
+  res.json({ success: true, data: payment });
+};
+
+export const getDomainsAdmin = async (_req: Request, res: Response): Promise<void> => {
+  const data = await db.select().from(domains).orderBy(desc(domains.createdAt));
+  res.json({ success: true, data });
+};
+
+export const createDomain = async (req: Request, res: Response): Promise<void> => {
+  const { name, description, isActive = true } = req.body ?? {};
+  const [created] = await db.insert(domains).values({ name, description, isActive }).returning();
+  res.status(201).json({ success: true, data: created });
+};
+
+export const updateDomain = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(domains).set(req.body).where(eq(domains.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Domain not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const toggleDomainStatus = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(domains).set({ isActive: Boolean(req.body?.isActive) }).where(eq(domains.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Domain not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const getCollegesAdmin = async (_req: Request, res: Response): Promise<void> => {
+  const data = await db.select().from(colleges).orderBy(desc(colleges.createdAt));
+  res.json({ success: true, data });
+};
+
+export const createCollege = async (req: Request, res: Response): Promise<void> => {
+  const [created] = await db.insert(colleges).values(req.body).returning();
+  res.status(201).json({ success: true, data: created });
+};
+
+export const updateCollege = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(colleges).set(req.body).where(eq(colleges.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "College not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const toggleCollegeStatus = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(colleges).set({ isActive: Boolean(req.body?.isActive) }).where(eq(colleges.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "College not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const getRoundsAdmin = async (_req: Request, res: Response): Promise<void> => {
+  const data = await db.select().from(rounds).orderBy(asc(rounds.roundNumber));
+  res.json({ success: true, data });
+};
+
+export const createRound = async (req: Request, res: Response): Promise<void> => {
+  const [created] = await db.insert(rounds).values(req.body).returning();
+  res.status(201).json({ success: true, data: created });
+};
+
+export const updateRound = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(rounds).set(req.body).where(eq(rounds.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Round not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const toggleRoundStatus = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(rounds).set({ status: req.body?.status }).where(eq(rounds.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Round not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const getProblemStatementsAdmin = async (_req: Request, res: Response): Promise<void> => {
+  const data = await db
+    .select({
+      id: problemStatements.id,
+      problemStatementId: problemStatements.problemStatementId,
+      title: problemStatements.title,
+      description: problemStatements.description,
+      isPublished: problemStatements.isPublished,
+      domainName: domains.name,
+      createdAt: problemStatements.createdAt,
+    })
+    .from(problemStatements)
+    .leftJoin(domains, eq(domains.id, problemStatements.domainId))
+    .orderBy(desc(problemStatements.createdAt));
+  res.json({ success: true, data });
+};
+
+export const createProblemStatement = async (req: Request, res: Response): Promise<void> => {
+  const [created] = await db.insert(problemStatements).values(req.body).returning();
+  res.status(201).json({ success: true, data: created });
+};
+
+export const updateProblemStatement = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db.update(problemStatements).set(req.body).where(eq(problemStatements.id, id)).returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Problem statement not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};
+
+export const publishProblemStatement = async (req: Request, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const [updated] = await db
+    .update(problemStatements)
+    .set({ isPublished: Boolean(req.body?.isPublished) })
+    .where(eq(problemStatements.id, id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Problem statement not found" });
+    return;
+  }
+  res.json({ success: true, data: updated });
+};

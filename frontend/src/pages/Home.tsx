@@ -17,11 +17,9 @@ export default function Home() {
           to="/register"
           className="mt-8 inline-flex h-12 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-8 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(91,33,182,0.3)] transition hover:brightness-110"
         >
-          Register Now →
+          Register Now {"->"}
         </Link>
       </div>
     </div>
   );
 }
-
-

@@ -16,13 +16,6 @@ import { sendVerificationEmail } from "./email.service";
 
 const VERIFICATION_EXPIRY_HOURS = 24;
 
-const generateReadableId = (prefix: string) => {
-  const timestamp = Date.now().toString().slice(-8);
-  const random = Math.floor(1000 + Math.random() * 9000);
-
-  return `${prefix}-${timestamp}${random}`;
-};
-
 export const registerTeam = async (input: RegisterTeamInput) => {
   const normalizedEmails = input.members.map((member) =>
     member.email.toLowerCase()
@@ -107,18 +100,31 @@ export const registerTeam = async (input: RegisterTeamInput) => {
             Number(existingCollege.id)
           );
         } else {
-          const collegeId = generateReadableId("COL");
+          // Short temporary ID because colleges.college_id is VARCHAR(20)
+          const temporaryCollegeId = `T-${Date.now()}`;
 
           const [newCollege] = await tx
             .insert(colleges)
             .values({
-              collegeId,
+              collegeId: temporaryCollegeId,
               name: normalizedCollegeName,
               region: member.region,
             })
             .returning({
               id: colleges.id,
             });
+
+          // Generate final readable ID from database-generated ID
+          const readableCollegeId = `COL-${String(
+            newCollege.id
+          ).padStart(3, "0")}`;
+
+          await tx
+            .update(colleges)
+            .set({
+              collegeId: readableCollegeId,
+            })
+            .where(eq(colleges.id, newCollege.id));
 
           resolvedCollegeIds.set(
             member.email,
@@ -132,14 +138,13 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     // 4. Create Team
     // ---------------------------------------------------------
 
-    const teamId = generateReadableId("TEAM");
-    const registrationId = generateReadableId("REG");
+    // Short temporary ID because teams.team_id is VARCHAR(30)
+    const temporaryTeamId = `TEMP-${Date.now()}`;
 
     const [team] = await tx
       .insert(teams)
       .values({
-        teamId,
-        registrationId,
+        teamId: temporaryTeamId,
         teamName: input.teamName.trim(),
         domainId: input.domainId,
         status: "DRAFT",
@@ -148,11 +153,21 @@ export const registerTeam = async (input: RegisterTeamInput) => {
       })
       .returning({
         id: teams.id,
-        teamId: teams.teamId,
-        registrationId: teams.registrationId,
         teamName: teams.teamName,
         status: teams.status,
       });
+
+    // Generate final readable IDs from database-generated ID
+    const teamId = `TEAM-${String(team.id).padStart(3, "0")}`;
+    const registrationId = `REG-${String(team.id).padStart(3, "0")}`;
+
+    await tx
+      .update(teams)
+      .set({
+        teamId,
+        registrationId,
+      })
+      .where(eq(teams.id, team.id));
 
     // ---------------------------------------------------------
     // 5. Create Team Members
@@ -185,8 +200,8 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     // ---------------------------------------------------------
 
     return {
-      teamId: team.teamId,
-      registrationId: team.registrationId,
+      teamId,
+      registrationId,
       teamName: team.teamName,
       status: team.status,
 
@@ -229,8 +244,8 @@ export const sendTeamVerificationEmails = async (
     const tokenHash = hashVerificationToken(token);
 
     const expiresAt = new Date(
-  Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
-).toISOString();
+      Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+    ).toISOString();
 
     await db
       .update(teamMembers)
