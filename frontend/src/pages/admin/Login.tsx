@@ -45,7 +45,7 @@ export default function AdminLogin() {
               <span className="text-xs font-medium text-slate-300">Email</span>
               <input
                 className="h-12 rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
-                placeholder="admin@musaforstudents.in"
+                placeholder="example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
