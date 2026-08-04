@@ -1,8 +1,17 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import { registerTeamSchema } from "../validators/team.validator";
-import { registerTeam } from "../services/team.service";
-import { sendTeamVerificationEmails } from "../services/team.service";
+import {
+  continueApplicationSchema,
+  registerTeamSchema,
+  updateTeamSchema,
+} from "../validators/team.validator";
+import {
+  registerTeam,
+  resumeApplication,
+  sendResumeLink,
+  sendTeamVerificationEmails,
+  updateTeam,
+} from "../services/team.service";
 
 export const registerTeamController = async (
   req: Request,
@@ -71,6 +80,117 @@ export const sendVerificationEmailsController = async (
         error instanceof Error
           ? error.message
           : "Failed to send verification emails",
+    });
+  }
+};
+
+export const continueApplicationController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { email } = continueApplicationSchema.parse(req.body);
+
+    const result = await sendResumeLink(email);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email",
+        errors: error.issues,
+      });
+    }
+
+    console.error("Continue application error:", error);
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to send resume link",
+    });
+  }
+};
+
+export const resumeApplicationController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { token } = req.params;
+
+    if (typeof token !== "string" || !token) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid resume token",
+      });
+    }
+
+    const result = await resumeApplication(token);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Resume application error:", error);
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to load application draft",
+    });
+  }
+};
+
+export const updateTeamController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { teamId } = req.params;
+
+    if (typeof teamId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID",
+      });
+    }
+
+    const validatedData = updateTeamSchema.parse(req.body);
+
+    const result = await updateTeam(teamId, validatedData);
+
+    return res.status(200).json({
+      success: true,
+      message: "Team draft updated successfully.",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid registration data",
+        errors: error.issues,
+      });
+    }
+
+    console.error("Update team error:", error);
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to update team draft",
     });
   }
 };

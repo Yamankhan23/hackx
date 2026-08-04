@@ -66,3 +66,18 @@ export const registerTeamSchema = z
   });
 
 export type RegisterTeamInput = z.infer<typeof registerTeamSchema>;
+
+// Used when updating an existing draft — same shape as registration.
+export const updateTeamSchema = registerTeamSchema;
+export type UpdateTeamInput = RegisterTeamInput;
+
+export const continueApplicationSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email address")
+    .max(255)
+    .transform((email) => email.toLowerCase()),
+});
+
+export type ContinueApplicationInput = z.infer<typeof continueApplicationSchema>;

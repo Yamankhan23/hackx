@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home";
 import { RegistrationPage } from "./pages/Registration/RegistrationPage";
+import { ResumePage } from "./pages/Registration/ResumePage";
 import { VerificationStatusPage } from "./pages/Registration/VerificationStatusPage";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -12,6 +13,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<RegistrationPage />} />
+        <Route path="/resume" element={<ResumePage />} />
         <Route path="/registration/verification" element={<VerificationStatusPage />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
