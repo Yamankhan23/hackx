@@ -22,6 +22,8 @@ const highlights = [
 
 export function About() {
   const { ref, inView } = useInView<HTMLDivElement>();
+  const { ref: highlightsRef, inView: highlightsInView } =
+    useInView<HTMLDivElement>();
 
   return (
     <section id="about" className="relative scroll-mt-20 py-20 sm:py-28">
@@ -66,13 +68,17 @@ export function About() {
           </p>
         </div>
 
-        <div
+<div
+          ref={highlightsRef}
           className="mx-auto mt-12 grid max-w-4xl grid-cols-1 gap-4 sm:grid-cols-3"
         >
           {highlights.map((item, i) => (
             <div
               key={item.label}
-              className="reveal rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center backdrop-blur transition hover:border-purple-400/30 hover:bg-white/[0.06]"
+              className={cn(
+                "reveal rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center backdrop-blur transition hover:border-purple-400/30 hover:bg-white/[0.06]",
+                highlightsInView && "reveal-visible"
+              )}
               style={{ transitionDelay: `${i * 80}ms` }}
             >
               <p className="text-gradient text-4xl font-black sm:text-5xl">

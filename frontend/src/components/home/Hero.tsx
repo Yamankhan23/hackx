@@ -19,13 +19,6 @@ export function Hero() {
       <div className="animate-pulse-glow pointer-events-none absolute bottom-1/4 left-[6%] h-32 w-32 rounded-full bg-purple-500/15 blur-[80px]" />
 
       <div className="relative z-10 mx-auto w-full max-w-5xl px-4 text-center sm:px-6">
-        <div className="animate-fade-up mb-6 inline-flex items-center gap-4">
-          <img
-            src="/musa-logo.png"
-            alt="MUSA — Maharashtra University Students Association"
-            className="h-16 w-16 rounded-full object-contain ring-1 ring-white/15 shadow-glow sm:h-20 sm:w-20"
-          />
-        </div>
 
         <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-4 py-1.5 text-xs font-medium text-purple-100">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
