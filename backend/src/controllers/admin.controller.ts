@@ -21,7 +21,17 @@ import {
   teamMembers,
   teams,
 } from "../db/migrations/schema";
-import { adminLoginSchema } from "../validators/admin.validator";
+import {
+  adminLoginSchema,
+  createCollegeSchema,
+  createDomainSchema,
+  createProblemStatementSchema,
+  createRoundSchema,
+  updateCollegeSchema,
+  updateDomainSchema,
+  updateProblemStatementSchema,
+  updateRoundSchema,
+} from "../validators/admin.validator";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
@@ -386,138 +396,257 @@ export const getPaymentById = async (req: Request, res: Response): Promise<void>
 };
 
 export const getDomainsAdmin = async (_req: Request, res: Response): Promise<void> => {
-  const data = await db.select().from(domains).orderBy(desc(domains.createdAt));
-  res.json({ success: true, data });
+  try {
+    const data = await db.select().from(domains).orderBy(desc(domains.createdAt));
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Get domains error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch domains" });
+  }
 };
 
 export const createDomain = async (req: Request, res: Response): Promise<void> => {
-  const { name, description, isActive = true } = req.body ?? {};
-  const [created] = await db.insert(domains).values({ name, description, isActive }).returning();
-  res.status(201).json({ success: true, data: created });
+  try {
+    const validation = createDomainSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const [created] = await db.insert(domains).values(validation.data).returning();
+    res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    console.error("Create domain error:", error);
+    res.status(500).json({ success: false, message: "Failed to create domain" });
+  }
 };
 
 export const updateDomain = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(domains).set(req.body).where(eq(domains.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "Domain not found" });
-    return;
+  try {
+    const validation = updateDomainSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const id = Number(req.params.id);
+    const [updated] = await db.update(domains).set(validation.data).where(eq(domains.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Domain not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Update domain error:", error);
+    res.status(500).json({ success: false, message: "Failed to update domain" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const toggleDomainStatus = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(domains).set({ isActive: Boolean(req.body?.isActive) }).where(eq(domains.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "Domain not found" });
-    return;
+  try {
+    const id = Number(req.params.id);
+    const [updated] = await db.update(domains).set({ isActive: Boolean(req.body?.isActive) }).where(eq(domains.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Domain not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Toggle domain status error:", error);
+    res.status(500).json({ success: false, message: "Failed to update domain status" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const getCollegesAdmin = async (_req: Request, res: Response): Promise<void> => {
-  const data = await db.select().from(colleges).orderBy(desc(colleges.createdAt));
-  res.json({ success: true, data });
+  try {
+    const data = await db.select().from(colleges).orderBy(desc(colleges.createdAt));
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Get colleges error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch colleges" });
+  }
 };
 
 export const createCollege = async (req: Request, res: Response): Promise<void> => {
-  const [created] = await db.insert(colleges).values(req.body).returning();
-  res.status(201).json({ success: true, data: created });
+  try {
+    const validation = createCollegeSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const [created] = await db.insert(colleges).values(validation.data).returning();
+    res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    console.error("Create college error:", error);
+    res.status(500).json({ success: false, message: "Failed to create college" });
+  }
 };
 
 export const updateCollege = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(colleges).set(req.body).where(eq(colleges.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "College not found" });
-    return;
+  try {
+    const validation = updateCollegeSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const id = Number(req.params.id);
+    const [updated] = await db.update(colleges).set(validation.data).where(eq(colleges.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "College not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Update college error:", error);
+    res.status(500).json({ success: false, message: "Failed to update college" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const toggleCollegeStatus = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(colleges).set({ isActive: Boolean(req.body?.isActive) }).where(eq(colleges.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "College not found" });
-    return;
+  try {
+    const id = Number(req.params.id);
+    const [updated] = await db.update(colleges).set({ isActive: Boolean(req.body?.isActive) }).where(eq(colleges.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "College not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Toggle college status error:", error);
+    res.status(500).json({ success: false, message: "Failed to update college status" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const getRoundsAdmin = async (_req: Request, res: Response): Promise<void> => {
-  const data = await db.select().from(rounds).orderBy(asc(rounds.roundNumber));
-  res.json({ success: true, data });
+  try {
+    const data = await db.select().from(rounds).orderBy(asc(rounds.roundNumber));
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Get rounds error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch rounds" });
+  }
 };
 
 export const createRound = async (req: Request, res: Response): Promise<void> => {
-  const [created] = await db.insert(rounds).values(req.body).returning();
-  res.status(201).json({ success: true, data: created });
+  try {
+    const validation = createRoundSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const [created] = await db.insert(rounds).values(validation.data).returning();
+    res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    console.error("Create round error:", error);
+    res.status(500).json({ success: false, message: "Failed to create round" });
+  }
 };
 
 export const updateRound = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(rounds).set(req.body).where(eq(rounds.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "Round not found" });
-    return;
+  try {
+    const validation = updateRoundSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const id = Number(req.params.id);
+    const [updated] = await db.update(rounds).set(validation.data).where(eq(rounds.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Round not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Update round error:", error);
+    res.status(500).json({ success: false, message: "Failed to update round" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const toggleRoundStatus = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(rounds).set({ status: req.body?.status }).where(eq(rounds.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "Round not found" });
-    return;
+  try {
+    const id = Number(req.params.id);
+    const [updated] = await db.update(rounds).set({ status: req.body?.status }).where(eq(rounds.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Round not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Toggle round status error:", error);
+    res.status(500).json({ success: false, message: "Failed to update round status" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const getProblemStatementsAdmin = async (_req: Request, res: Response): Promise<void> => {
-  const data = await db
-    .select({
-      id: problemStatements.id,
-      problemStatementId: problemStatements.problemStatementId,
-      title: problemStatements.title,
-      description: problemStatements.description,
-      isPublished: problemStatements.isPublished,
-      domainName: domains.name,
-      createdAt: problemStatements.createdAt,
-    })
-    .from(problemStatements)
-    .leftJoin(domains, eq(domains.id, problemStatements.domainId))
-    .orderBy(desc(problemStatements.createdAt));
-  res.json({ success: true, data });
+  try {
+    const data = await db
+      .select({
+        id: problemStatements.id,
+        problemStatementId: problemStatements.problemStatementId,
+        title: problemStatements.title,
+        description: problemStatements.description,
+        isPublished: problemStatements.isPublished,
+        domainName: domains.name,
+        createdAt: problemStatements.createdAt,
+      })
+      .from(problemStatements)
+      .leftJoin(domains, eq(domains.id, problemStatements.domainId))
+      .orderBy(desc(problemStatements.createdAt));
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Get problem statements error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch problem statements" });
+  }
 };
 
 export const createProblemStatement = async (req: Request, res: Response): Promise<void> => {
-  const [created] = await db.insert(problemStatements).values(req.body).returning();
-  res.status(201).json({ success: true, data: created });
+  try {
+    const validation = createProblemStatementSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const [created] = await db.insert(problemStatements).values(validation.data).returning();
+    res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    console.error("Create problem statement error:", error);
+    res.status(500).json({ success: false, message: "Failed to create problem statement" });
+  }
 };
 
 export const updateProblemStatement = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db.update(problemStatements).set(req.body).where(eq(problemStatements.id, id)).returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "Problem statement not found" });
-    return;
+  try {
+    const validation = updateProblemStatementSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+    const id = Number(req.params.id);
+    const [updated] = await db.update(problemStatements).set(validation.data).where(eq(problemStatements.id, id)).returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Problem statement not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Update problem statement error:", error);
+    res.status(500).json({ success: false, message: "Failed to update problem statement" });
   }
-  res.json({ success: true, data: updated });
 };
 
 export const publishProblemStatement = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [updated] = await db
-    .update(problemStatements)
-    .set({ isPublished: Boolean(req.body?.isPublished) })
-    .where(eq(problemStatements.id, id))
-    .returning();
-  if (!updated) {
-    res.status(404).json({ success: false, message: "Problem statement not found" });
-    return;
+  try {
+    const id = Number(req.params.id);
+    const [updated] = await db
+      .update(problemStatements)
+      .set({ isPublished: Boolean(req.body?.isPublished) })
+      .where(eq(problemStatements.id, id))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Problem statement not found" });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Publish problem statement error:", error);
+    res.status(500).json({ success: false, message: "Failed to update problem statement" });
   }
-  res.json({ success: true, data: updated });
 };

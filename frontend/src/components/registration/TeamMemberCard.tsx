@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormGetValues } from "react-hook-form";
+import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form";
 import type { RegistrationFormValues } from "../../schemas/registration.schema";
 import type { College } from "../../types/registration";
 import { cn } from "../../lib/utils";
@@ -9,10 +9,10 @@ type Props = {
   index: number;
   title: string;
   optional?: boolean;
-  register: UseFormRegister<RegistrationFormValues>;
+register: UseFormRegister<RegistrationFormValues>;
   errors: FieldErrors<RegistrationFormValues>;
-  setValue: UseFormSetValue<RegistrationFormValues>;
-  getValues: UseFormGetValues<RegistrationFormValues>;
+setValue: UseFormSetValue<RegistrationFormValues>;
+  watch: UseFormWatch<RegistrationFormValues>;
   colleges: College[];
   showRemove?: boolean;
   onRemove?: () => void;
@@ -31,10 +31,10 @@ export function TeamMemberCard({
   index,
   title,
   optional,
-  register,
-  errors,
+register,
+errors,
   setValue,
-  getValues,
+  watch,
   colleges,
   showRemove,
   onRemove,
@@ -55,15 +55,15 @@ export function TeamMemberCard({
     [setValue, index]
   );
 
-  const handleManualNameChange = useCallback(
+const handleManualNameChange = useCallback(
     (name: string) => {
-      setValue(`members.${index}.collegeName`, name);
+      setValue(`members.${index}.collegeName`, name, { shouldValidate: true });
     },
     [setValue, index]
   );
 
-  const selectedCollegeName = getValues(`members.${index}.selectedCollegeName`) || "";
-  const manualName = getValues(`members.${index}.collegeName`) || "";
+  const selectedCollegeName = watch(`members.${index}.selectedCollegeName`) || "";
+  const manualName = watch(`members.${index}.collegeName`) || "";
 
   return (
     <section className="rounded-2xl border border-slate-800/90 bg-slate-950/75 p-4 shadow-[0_0_0_1px_rgba(168,85,247,0.08)]">

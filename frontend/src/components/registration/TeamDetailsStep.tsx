@@ -9,12 +9,14 @@ export function TeamDetailsStep({
   domains,
   value,
   onChange,
+  domainsLoading,
 }: {
   register: UseFormRegister<RegistrationFormValues>;
   errors: FieldErrors<RegistrationFormValues>;
   domains: Domain[];
   value: string;
   onChange: (value: string) => void;
+  domainsLoading?: boolean;
 }) {
   return (
     <div className="grid gap-4">
@@ -30,10 +32,11 @@ export function TeamDetailsStep({
 
       <label className="grid gap-1.5">
         <span className="text-xs font-medium text-slate-300">Domain</span>
-        <DomainSelect
+<DomainSelect
           domains={domains}
           value={value}
           onChange={onChange}
+          loading={domainsLoading}
           error={errors.domainId?.message}
         />
 

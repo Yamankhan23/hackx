@@ -31,8 +31,9 @@ export function RegistrationPage() {
   const [step, setStep] = useState(1);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [colleges, setColleges] = useState<College[]>([]);
-  const [generalError, setGeneralError] = useState("");
+const [generalError, setGeneralError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [domainsLoading, setDomainsLoading] = useState(true);
 
   const form = useForm<RegistrationFormValues, unknown, RegistrationFormValues>({
     resolver: zodResolver(registrationSchema),
@@ -54,10 +55,15 @@ export function RegistrationPage() {
     name: "members",
   });
 
-  useEffect(() => {
+useEffect(() => {
     Promise.all([
-      fetchDomains().then(setDomains),
-      fetchColleges().then(setColleges),
+      fetchDomains()
+        .then(setDomains)
+        .catch(() => setGeneralError("Unable to load data right now."))
+        .finally(() => setDomainsLoading(false)),
+fetchColleges()
+        .then(setColleges)
+        .catch(() => setGeneralError("Unable to load data right now.")),
     ]).catch(() => setGeneralError("Unable to load data right now."));
   }, []);
 
@@ -154,7 +160,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
 
           <form className="mt-5 grid gap-4" onSubmit={submitForm}>
             {step === 1 ? (
-              <TeamDetailsStep
+<TeamDetailsStep
                 register={form.register}
                 errors={form.formState.errors}
                 domains={domains}
@@ -162,15 +168,16 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
                 onChange={(value) =>
                   form.setValue("domainId", value, { shouldValidate: true })
                 }
+                domainsLoading={domainsLoading}
               />
             ) : null}
 
             {step === 2 ? (
-              <TeamMembersStep
+<TeamMembersStep
                 register={form.register}
                 errors={form.formState.errors}
                 setValue={form.setValue}
-                getValues={form.getValues}
+                watch={form.watch}
                 colleges={colleges}
                 onAddMember={addMember}
                 onRemoveMember={removeMember}

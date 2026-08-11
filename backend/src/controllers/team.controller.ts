@@ -1,8 +1,7 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import { registerTeamSchema } from "../validators/team.validator";
-import { registerTeam } from "../services/team.service";
-import { sendTeamVerificationEmails } from "../services/team.service";
+import { registerTeam, sendTeamVerificationEmails, verifyEmail } from "../services/team.service";
 
 export const registerTeamController = async (
   req: Request,
@@ -71,6 +70,62 @@ export const sendVerificationEmailsController = async (
         error instanceof Error
           ? error.message
           : "Failed to send verification emails",
+    });
+  }
+};
+
+export const verifyEmailController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const token = String(req.query.token ?? "").trim();
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_TOKEN",
+        message: "Verification token is required",
+      });
+    }
+
+    const result = await verifyEmail(token);
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "TOKEN_EXPIRED") {
+        return res.status(410).json({
+          success: false,
+          code: "TOKEN_EXPIRED",
+          message: "This verification link has expired. Please request a new one.",
+        });
+      }
+      if (error.message === "INVALID_TOKEN") {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_TOKEN",
+          message: "This verification link is invalid.",
+        });
+      }
+      if (error.message === "ALREADY_VERIFIED") {
+        return res.status(200).json({
+          success: true,
+          code: "ALREADY_VERIFIED",
+          message: "This email address has already been verified.",
+        });
+      }
+    }
+
+    console.error("Email verification error:", error);
+    return res.status(500).json({
+      success: false,
+      code: "SERVER_ERROR",
+      message: "Failed to verify email. Please try again.",
     });
   }
 };

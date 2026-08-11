@@ -214,6 +214,51 @@ export const registerTeam = async (input: RegisterTeamInput) => {
   });
 };
 
+export const verifyEmail = async (token: string) => {
+  const tokenHash = hashVerificationToken(token);
+
+  const [member] = await db
+    .select({
+      id: teamMembers.id,
+      email: teamMembers.email,
+      fullName: teamMembers.fullName,
+      emailVerifiedAt: teamMembers.emailVerifiedAt,
+      emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
+    })
+    .from(teamMembers)
+    .where(eq(teamMembers.emailVerificationTokenHash, tokenHash))
+    .limit(1);
+
+  if (!member) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (member.emailVerifiedAt) {
+    throw new Error("ALREADY_VERIFIED");
+  }
+
+  if (
+    !member.emailVerificationExpiresAt ||
+    new Date(member.emailVerificationExpiresAt) < new Date()
+  ) {
+    throw new Error("TOKEN_EXPIRED");
+  }
+
+  await db
+    .update(teamMembers)
+    .set({
+      emailVerifiedAt: new Date().toISOString(),
+      emailVerificationTokenHash: null,
+      emailVerificationExpiresAt: null,
+    })
+    .where(eq(teamMembers.id, member.id));
+
+  return {
+    email: member.email,
+    name: member.fullName,
+  };
+};
+
 export const sendTeamVerificationEmails = async (
   teamReadableId: string
 ) => {

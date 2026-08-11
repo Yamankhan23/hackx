@@ -1,13 +1,13 @@
-import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormGetValues } from "react-hook-form";
+import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form";
 import type { RegistrationFormValues } from "../../schemas/registration.schema";
 import type { College } from "../../types/registration";
 import { TeamMemberCard } from "./TeamMemberCard";
 
 export function TeamMembersStep({
-  register,
+register,
   errors,
   setValue,
-  getValues,
+  watch,
   colleges,
   onAddMember,
   onRemoveMember,
@@ -15,8 +15,8 @@ export function TeamMembersStep({
 }: {
   register: UseFormRegister<RegistrationFormValues>;
   errors: FieldErrors<RegistrationFormValues>;
-  setValue: UseFormSetValue<RegistrationFormValues>;
-  getValues: UseFormGetValues<RegistrationFormValues>;
+setValue: UseFormSetValue<RegistrationFormValues>;
+  watch: UseFormWatch<RegistrationFormValues>;
   colleges: College[];
   onAddMember: () => void;
   onRemoveMember: (index: number) => void;
@@ -30,10 +30,10 @@ export function TeamMembersStep({
           index={index}
           title={index === 0 ? "Team Leader" : `Member ${index + 1}`}
           optional={index === 3}
-          register={register}
+register={register}
           errors={errors}
           setValue={setValue}
-          getValues={getValues}
+          watch={watch}
           colleges={colleges}
           showRemove={index === 3}
           onRemove={() => onRemoveMember(index)}

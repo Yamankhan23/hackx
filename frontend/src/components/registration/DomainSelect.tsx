@@ -6,10 +6,11 @@ type Props = {
   domains: Domain[];
   value: string;
   onChange: (value: string) => void;
+  loading?: boolean;
   error?: string;
 };
 
-export function DomainSelect({ domains, value, onChange, error }: Props) {
+export function DomainSelect({ domains, value, onChange, loading, error }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -53,27 +54,36 @@ export function DomainSelect({ domains, value, onChange, error }: Props) {
           error ? "border-rose-500/50" : ""
         )}
       >
-        <span className={cn("truncate", value ? "text-white" : "text-slate-500")}>
-          {selectedDomain?.name ?? "Choose domain"}
-        </span>
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
-          className={cn(
-            "h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200",
-            isOpen ? "rotate-180 text-purple-300" : ""
+<span className={cn("truncate", value ? "text-white" : "text-slate-500")}>
+          {loading ? (
+            <span className="inline-flex items-center gap-2 text-slate-400">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-purple-300" />
+              Loading domains...
+            </span>
+          ) : (
+            (selectedDomain?.name ?? "Choose domain")
           )}
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
+        </span>
+        {loading ? null : (
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+            className={cn(
+              "h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200",
+              isOpen ? "rotate-180 text-purple-300" : ""
+            )}
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        )}
       </button>
 
-      {isOpen ? (
+      {isOpen && !loading ? (
         <ul
           role="listbox"
           className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-lg"

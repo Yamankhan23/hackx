@@ -35,10 +35,10 @@ export function VerificationStatusPage() {
           </div>
 
           <Link
-            to="/register"
+            to="/"
             className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
           >
-            View Verification Status
+            Back to home
           </Link>
         </div>
       </div>
