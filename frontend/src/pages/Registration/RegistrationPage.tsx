@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { RegistrationSteps } from "../../components/registration/RegistrationSteps";
 import { RegistrationReview } from "../../components/registration/RegistrationReview";
 import { TeamDetailsStep } from "../../components/registration/TeamDetailsStep";
@@ -10,8 +10,19 @@ import {
   registrationSchema,
   type RegistrationFormValues,
 } from "../../schemas/registration.schema";
-import { fetchColleges, fetchDomains, registerTeam } from "../../services/registration.service";
-import type { College, Domain, RegisterTeamPayload } from "../../types/registration";
+import {
+  fetchColleges,
+  fetchDomains,
+  registerTeam,
+  resumeApplication,
+  updateTeam,
+} from "../../services/registration.service";
+import type {
+  College,
+  Domain,
+  RegisterTeamPayload,
+  ResumeDraft,
+} from "../../types/registration";
 
 const createEmptyMember = (role: "LEADER" | "MEMBER") => ({
   role,
@@ -28,12 +39,18 @@ const createEmptyMember = (role: "LEADER" | "MEMBER") => ({
 
 export function RegistrationPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resumeToken = searchParams.get("token");
+
   const [step, setStep] = useState(1);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [colleges, setColleges] = useState<College[]>([]);
 const [generalError, setGeneralError] = useState("");
   const [loading, setLoading] = useState(false);
   const [domainsLoading, setDomainsLoading] = useState(true);
+  const [resumeDraft, setResumeDraft] = useState<ResumeDraft | null>(null);
+  const [resumeTeamId, setResumeTeamId] = useState<string | null>(null);
+  const [isResuming, setIsResuming] = useState(Boolean(resumeToken));
 
   const form = useForm<RegistrationFormValues, unknown, RegistrationFormValues>({
     resolver: zodResolver(registrationSchema),
@@ -55,6 +72,30 @@ const [generalError, setGeneralError] = useState("");
     name: "members",
   });
 
+  // Pre-fill the form from a resumed draft
+  const applyResumeDraft = useCallback(
+    (draft: ResumeDraft) => {
+      form.reset({
+        teamName: draft.teamName,
+        domainId: String(draft.domainId),
+        declarationAccepted: draft.declarationAccepted,
+        members: draft.members.map((member) => ({
+          role: member.role,
+          fullName: member.fullName,
+          email: member.email,
+          mobileNumber: member.mobileNumber,
+          selectedCollegeId: member.collegeId,
+          selectedCollegeName: member.collegeName,
+          collegeName: "",
+          region: member.region,
+          branch: member.branch,
+          yearOfStudy: String(member.yearOfStudy),
+        })),
+      });
+    },
+    [form]
+  );
+
 useEffect(() => {
     Promise.all([
       fetchDomains()
@@ -66,6 +107,57 @@ fetchColleges()
         .catch(() => setGeneralError("Unable to load data right now.")),
     ]).catch(() => setGeneralError("Unable to load data right now."));
   }, []);
+
+  useEffect(() => {
+    if (!resumeToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    resumeApplication(resumeToken)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (response.data.alreadySubmitted) {
+          setGeneralError(
+            response.data.message ||
+              "Your application has already been submitted."
+          );
+          setResumeDraft(null);
+          setIsResuming(false);
+          return;
+        }
+
+        if (response.data.draft) {
+          setResumeDraft(response.data.draft);
+          setResumeTeamId(response.data.team.teamId);
+          applyResumeDraft(response.data.draft);
+          setStep(3);
+        } else {
+          setGeneralError("Could not load your draft application.");
+        }
+
+        setIsResuming(false);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        setGeneralError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load your draft application."
+        );
+        setIsResuming(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeToken, applyResumeDraft]);
 
   const selectedDomain = domains.find(
     (domain) => String(domain.id) === form.watch("domainId")
@@ -111,19 +203,30 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
     setLoading(true);
 
     try {
-      const response = await registerTeam(buildPayload(values));
-      navigate("/registration/verification", {
-        state: {
-          teamId: response.data.teamId,
-          registrationId: response.data.registrationId,
-          teamName: response.data.teamName,
-        },
-      });
+      if (resumeTeamId) {
+        // Update the existing draft (no duplicate created)
+        await updateTeam(resumeTeamId, buildPayload(values));
+        navigate("/registration/verification", {
+          state: {
+            teamId: resumeTeamId,
+            teamName: values.teamName,
+          },
+        });
+      } else {
+        const response = await registerTeam(buildPayload(values));
+        navigate("/registration/verification", {
+          state: {
+            teamId: response.data.teamId,
+            registrationId: response.data.registrationId,
+            teamName: response.data.teamName,
+          },
+        });
+      }
     } catch (error) {
       setGeneralError(
         error instanceof Error
           ? error.message
-          : "Failed to create team registration."
+          : "Failed to save team registration."
       );
     } finally {
       setLoading(false);
@@ -146,9 +249,13 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
           <RegistrationSteps currentStep={step} />
 
           <div className="mt-5">
-            <h2 className="text-2xl font-semibold">Create your team</h2>
+            <h2 className="text-2xl font-semibold">
+              {resumeDraft ? "Continue your team registration" : "Create your team"}
+            </h2>
             <p className="mt-1 text-sm text-slate-400">
-              Register your team for MUSA HackX 2026.
+              {resumeDraft
+                ? `Editing draft for "${resumeDraft.teamName}".`
+                : "Register your team for MUSA HackX 2026."}
             </p>
           </div>
 
@@ -158,87 +265,97 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
             </div>
           ) : null}
 
-          <form className="mt-5 grid gap-4" onSubmit={submitForm}>
-            {step === 1 ? (
-<TeamDetailsStep
-                register={form.register}
-                errors={form.formState.errors}
-                domains={domains}
-                value={form.watch("domainId")}
-                onChange={(value) =>
-                  form.setValue("domainId", value, { shouldValidate: true })
-                }
-                domainsLoading={domainsLoading}
-              />
-            ) : null}
-
-            {step === 2 ? (
-<TeamMembersStep
-                register={form.register}
-                errors={form.formState.errors}
-                setValue={form.setValue}
-                watch={form.watch}
-                colleges={colleges}
-                onAddMember={addMember}
-                onRemoveMember={removeMember}
-                memberCount={fields.length}
-              />
-            ) : null}
-
-            {step === 3 ? (
-              <>
-                <RegistrationReview values={form.getValues()} domain={selectedDomain} />
-
-                <label className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    {...form.register("declarationAccepted")}
-                    className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-400"
-                  />
-                  <span>
-                    I confirm that the information provided is accurate and complete, and I agree
-                    to the MUSA HackX 2026 registration terms.
-                  </span>
-                </label>
-
-                {form.formState.errors.declarationAccepted ? (
-                  <p className="text-sm text-rose-300">
-                    Declaration acceptance is required.
-                  </p>
-                ) : null}
-              </>
-            ) : null}
-
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              {step > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setStep((current) => current - 1)}
-                  className="h-12 rounded-xl border border-slate-700 bg-transparent text-sm font-medium text-slate-200 transition hover:border-slate-500"
-                >
-                  ← Back
-                </button>
+          {isResuming ? (
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/75 p-6 text-center text-sm text-slate-300">
+              Loading your draft application...
+            </div>
+          ) : (
+            <form className="mt-5 grid gap-4" onSubmit={submitForm}>
+              {step === 1 ? (
+                <TeamDetailsStep
+                  register={form.register}
+                  errors={form.formState.errors}
+                  domains={domains}
+                  value={form.watch("domainId")}
+                  onChange={(value) =>
+                    form.setValue("domainId", value, { shouldValidate: true })
+                  }
+                  domainsLoading={domainsLoading}
+                />
               ) : null}
 
-              {step < 3 ? (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="h-12 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(91,33,182,0.3)] transition hover:brightness-110"
-                >
-                  Continue →
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="h-12 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(91,33,182,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:col-span-2"
-                >
-                  {loading ? "Creating your team..." : "Complete Registration"}
-                </button>
-              )}
-            </div>
-          </form>
+              {step === 2 ? (
+                <TeamMembersStep
+                  register={form.register}
+                  errors={form.formState.errors}
+                  setValue={form.setValue}
+                  watch={form.watch}
+                  colleges={colleges}
+                  onAddMember={addMember}
+                  onRemoveMember={removeMember}
+                  memberCount={fields.length}
+                />
+              ) : null}
+
+              {step === 3 ? (
+                <>
+                  <RegistrationReview values={form.getValues()} domain={selectedDomain} />
+
+                  <label className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm text-slate-300">
+                    <input
+                      type="checkbox"
+                      {...form.register("declarationAccepted")}
+                      className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-400"
+                    />
+                    <span>
+                      I confirm that the information provided is accurate and complete, and I agree
+                      to the MUSA HackX 2026 registration terms.
+                    </span>
+                  </label>
+
+                  {form.formState.errors.declarationAccepted ? (
+                    <p className="text-sm text-rose-300">
+                      Declaration acceptance is required.
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {step > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setStep((current) => current - 1)}
+                    className="h-12 rounded-xl border border-slate-700 bg-transparent text-sm font-medium text-slate-200 transition hover:border-slate-500"
+                  >
+                    ← Back
+                  </button>
+                ) : null}
+
+                {step < 3 ? (
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="h-12 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(91,33,182,0.3)] transition hover:brightness-110"
+                  >
+                    Continue →
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-12 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(91,33,182,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:col-span-2"
+                  >
+                    {loading
+                      ? "Saving..."
+                      : resumeDraft
+                        ? "Save & Continue"
+                        : "Complete Registration"}
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>

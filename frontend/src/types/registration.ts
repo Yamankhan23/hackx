@@ -68,3 +68,38 @@ export type TeamFormValues = {
     yearOfStudy: string;
   }>;
 };
+
+export type ResumeDraftMember = {
+  id: number;
+  role: "LEADER" | "MEMBER";
+  fullName: string;
+  email: string;
+  mobileNumber: string;
+  collegeId: string;
+  collegeName: string;
+  region: string;
+  branch: string;
+  yearOfStudy: number;
+  emailVerifiedAt: string | null;
+};
+
+export type ResumeDraft = {
+  teamName: string;
+  domainId: number;
+  domainName: string;
+  declarationAccepted: boolean;
+  members: ResumeDraftMember[];
+};
+
+export type ResumeApplicationResponse = {
+  alreadySubmitted: boolean;
+  status?: string;
+  message?: string;
+  team: {
+    teamId: string;
+    registrationId: string | null;
+    teamName: string;
+    status: string;
+  };
+  draft?: ResumeDraft;
+};
