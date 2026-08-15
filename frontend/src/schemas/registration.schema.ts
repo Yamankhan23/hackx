@@ -16,14 +16,16 @@ const memberSchema = z.object({
   mobileNumber: z
     .string()
     .trim()
-    .min(8, "Mobile number is required")
-    .max(20, "Enter a valid mobile number"),
+    .regex(/^\+?[0-9]{10,15}$/, "Enter a valid mobile number (10-15 digits)"),
   selectedCollegeId: z.string().trim().optional(),
   selectedCollegeName: z.string().trim().optional(),
   collegeName: z.string().trim().optional(),
   region: z.string().trim().min(2, "Region is required").max(100),
   branch: z.string().trim().min(2, "Branch is required").max(150),
-  yearOfStudy: z.string().trim().min(1, "Year of study is required"),
+  yearOfStudy: z
+    .string()
+    .trim()
+    .regex(/^[1-6]$/, "Year of study must be between 1 and 6"),
 });
 
 export const registrationSchema = z

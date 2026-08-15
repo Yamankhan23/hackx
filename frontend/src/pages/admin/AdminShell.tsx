@@ -47,7 +47,7 @@ export default function AdminShell({
             </button>
           </div>
 
-          <div className="mt-4 rounded-[22px] border border-white/10 bg-white/5 p-4">
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-sm font-medium">{adminName}</p>
             <p className="mt-1 text-xs text-white/60">{adminEmail}</p>
           </div>
@@ -83,25 +83,12 @@ export default function AdminShell({
         </aside>
 
         <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-          <header className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[0_20px_80px_rgba(8,15,35,0.35)] backdrop-blur">
-            <div className="flex flex-col gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-purple-200/70">Admin workspace</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h2>
-                {subtitle ? <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">{subtitle}</p> : null}
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full border border-purple-400/25 bg-purple-500/10 px-3 py-1 text-xs text-purple-100">
-                    Premium
-                  </span>
-                  <span className="rounded-full border border-blue-400/25 bg-blue-500/10 px-3 py-1 text-xs text-blue-100">
-                    Mobile first
-                  </span>
-                </div>
-                {primaryAction ? <div>{primaryAction}</div> : null}
-              </div>
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+              {subtitle ? <p className="mt-1 max-w-2xl text-sm leading-6 text-white/60">{subtitle}</p> : null}
             </div>
+            {primaryAction ? <div className="shrink-0">{primaryAction}</div> : null}
           </header>
 
           <div className="mt-5">{children}</div>

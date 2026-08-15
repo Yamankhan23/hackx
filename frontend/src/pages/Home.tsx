@@ -14,6 +14,7 @@ import { Faq } from "../components/home/Faq";
 import { FinalCta } from "../components/home/FinalCta";
 import { Footer } from "../components/home/Footer";
 import { sendResumeLink } from "../services/registration.service";
+import { getApiErrorMessage } from "../lib/apiError";
 
 export default function Home() {
   const [resumeEmail, setResumeEmail] = useState("");
@@ -41,11 +42,7 @@ export default function Home() {
       );
       setResumeEmail("");
     } catch (error) {
-      setResumeError(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again."
-      );
+      setResumeError(getApiErrorMessage(error, "Something went wrong. Please try again."));
     } finally {
       setResumeLoading(false);
     }

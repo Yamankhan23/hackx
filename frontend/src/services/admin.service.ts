@@ -1,4 +1,5 @@
 import api from "./api";
+export { getApiErrorMessage } from "../lib/apiError";
 
 export type AdminLoginResponse = {
   admin: { id: number; adminId: string; name: string; email: string; role: string };
@@ -78,9 +79,41 @@ export type ProblemStatementInput = {
 
 export type TeamStatus = "DRAFT" | "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED";
 
+export type PaymentStatus = "CREATED" | "PENDING" | "SUCCESS" | "FAILED" | "REFUNDED";
+
+export type Payment = {
+  id: number;
+  paymentId: string;
+  teamId: string;
+  teamName: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  method: string | null;
+  failureReason: string | null;
+  razorpayOrderId: string | null;
+  razorpayPaymentId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+};
+
+export type ListMeta = { page: number; limit: number; total: number };
+export type ListResult<T> = { data: T[]; meta: ListMeta };
+
 async function unwrap<T>(promise: Promise<{ data: { data: T } }>): Promise<T> {
   const response = await promise;
   return response.data.data;
+}
+
+async function unwrapList<T>(
+  promise: Promise<{ data: { data: T[]; meta?: Partial<ListMeta> } }>
+): Promise<ListResult<T>> {
+  const response = await promise;
+  const { data, meta } = response.data;
+  return {
+    data,
+    meta: { page: meta?.page ?? 1, limit: meta?.limit ?? data.length, total: meta?.total ?? data.length },
+  };
 }
 
 export const adminService = {
@@ -89,13 +122,17 @@ export const adminService = {
 
   getDashboard: () => unwrap<Record<string, unknown>>(api.get("/admin/dashboard")),
 
-  getTeams: (params?: Record<string, string>) =>
-    unwrap<Record<string, unknown>[]>(api.get("/admin/teams", { params })),
+  getTeams: (params?: Record<string, string | number>) =>
+    unwrapList<Record<string, unknown>>(api.get("/admin/teams", { params })),
   updateTeamStatus: (id: number, status: TeamStatus) =>
     unwrap<Record<string, unknown>>(api.patch(`/admin/teams/${id}/status`, { status })),
 
-  getParticipants: (params?: Record<string, string>) =>
-    unwrap<Record<string, unknown>[]>(api.get("/admin/participants", { params })),
+  getParticipants: (params?: Record<string, string | number>) =>
+    unwrapList<Record<string, unknown>>(api.get("/admin/participants", { params })),
+
+  getPayments: (params?: Record<string, string | number>) =>
+    unwrapList<Payment>(api.get("/admin/payments", { params })),
+  getPaymentById: (id: number) => unwrap<Payment>(api.get(`/admin/payments/${id}`)),
 
   getDomains: () => unwrap<Domain[]>(api.get("/admin/domains")),
   createDomain: (input: DomainInput) => unwrap<Domain>(api.post("/admin/domains", input)),
@@ -129,8 +166,3 @@ export const adminService = {
       api.patch(`/admin/problem-statements/${id}/publish`, { isPublished })
     ),
 };
-
-export function getApiErrorMessage(error: unknown, fallback: string): string {
-  const response = (error as { response?: { data?: { message?: string } } })?.response;
-  return response?.data?.message ?? fallback;
-}

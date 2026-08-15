@@ -53,6 +53,34 @@ export const createRazorpayOrder = async (
   return (await response.json()) as RazorpayOrder;
 };
 
+export type RazorpayPayment = {
+  id: string;
+  method?: string;
+  status: string;
+};
+
+/**
+ * Fetches a payment's details straight from Razorpay. Used as an immediate,
+ * webhook-independent way to capture the payment method right after
+ * client-side verification — the webhook remains the source of truth for
+ * confirming payment itself, but it may be delayed or (in local/tunnel-less
+ * dev) never arrive at all, which would otherwise leave `method` unset.
+ */
+export const fetchRazorpayPayment = async (
+  paymentId: string
+): Promise<RazorpayPayment> => {
+  const response = await fetch(`${RAZORPAY_API_BASE}/payments/${paymentId}`, {
+    headers: { Authorization: authHeader() },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Razorpay payment fetch failed: ${response.status} ${body}`);
+  }
+
+  return (await response.json()) as RazorpayPayment;
+};
+
 export const verifyPaymentSignature = ({
   orderId,
   paymentId,

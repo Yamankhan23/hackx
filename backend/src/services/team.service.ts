@@ -649,6 +649,30 @@ export const resumeApplication = async (resumeToken: string) => {
       .update(teamMembers)
       .set({ emailVerifiedAt: new Date().toISOString() })
       .where(eq(teamMembers.id, leader.id));
+
+    // The leader may verify via this resume link instead of their own
+    // verification email — if they were the last unverified member, the
+    // DRAFT -> PENDING_PAYMENT transition normally driven by verifyEmail()
+    // needs to happen here too, or the team is stuck in DRAFT forever with
+    // no payment link ever generated.
+    if (team.status === "DRAFT") {
+      const stillUnverified = await db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, team.id), isNull(teamMembers.emailVerifiedAt)));
+
+      if (stillUnverified.length === 0) {
+        const [transitioned] = await db
+          .update(teams)
+          .set({ status: "PENDING_PAYMENT" })
+          .where(and(eq(teams.id, team.id), eq(teams.status, "DRAFT")))
+          .returning({ id: teams.id });
+
+        if (transitioned) {
+          team.status = "PENDING_PAYMENT";
+        }
+      }
+    }
   }
 
   // If the team is no longer a draft, branch by status instead of a single

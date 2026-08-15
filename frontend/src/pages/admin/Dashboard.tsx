@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { adminService } from "../../services/admin.service";
 import { useAdminGuard } from "../../hooks/useAdminGuard";
+import { StatusBadge } from "../../components/admin/StatusBadge";
+import { formatDateTime } from "../../lib/formatDate";
+import { formatMoney } from "../../lib/formatMoney";
 import AdminShell from "./AdminShell";
 
 type DashboardData = {
@@ -8,14 +12,15 @@ type DashboardData = {
   totalParticipants: number;
   verifiedParticipants: number;
   unverifiedParticipants: number;
-  totalRegistrations: number;
   confirmedRegistrations: number;
-  pendingRegistrations: number;
+  pendingPaymentRegistrations: number;
+  draftRegistrations: number;
   cancelledRegistrations: number;
   totalPayments: number;
   successfulPayments: number;
   pendingPayments: number;
   failedPayments: number;
+  totalCollected: number;
   registrationsByDomain: Array<{ domainName: string; total: number }>;
   recentRegistrations: Array<{
     teamId: string;
@@ -27,10 +32,11 @@ type DashboardData = {
   }>;
 };
 
-const cardStyles = "rounded-[24px] border border-white/10 bg-white/5 p-5 shadow-[0_20px_60px_rgba(8,15,35,0.25)]";
+const cardClass = "rounded-2xl border border-white/10 bg-white/5 p-4";
 
 export default function AdminDashboard() {
   useAdminGuard();
+  const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,124 +63,96 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  const summaryCards = useMemo(
-    () => [
-      { label: "Teams", value: data?.totalTeams ?? 0, tone: "from-purple-500/20 to-purple-500/5" },
-      { label: "Participants", value: data?.totalParticipants ?? 0, tone: "from-blue-500/20 to-blue-500/5" },
-      { label: "Verified", value: data?.verifiedParticipants ?? 0, tone: "from-emerald-500/20 to-emerald-500/5" },
-      { label: "Pending registrations", value: data?.pendingRegistrations ?? 0, tone: "from-amber-500/20 to-amber-500/5" },
-      { label: "Confirmed registrations", value: data?.confirmedRegistrations ?? 0, tone: "from-cyan-500/20 to-cyan-500/5" },
-      { label: "Successful payments", value: data?.successfulPayments ?? 0, tone: "from-blue-500/20 to-purple-500/5" },
-    ],
-    [data]
-  );
+  const kpis = [
+    { label: "Teams", value: data?.totalTeams ?? 0 },
+    { label: "Confirmed", value: data?.confirmedRegistrations ?? 0 },
+    { label: "Awaiting payment", value: data?.pendingPaymentRegistrations ?? 0, alert: (data?.pendingPaymentRegistrations ?? 0) > 0 },
+    { label: "Collected", value: formatMoney(data?.totalCollected ?? 0) },
+  ];
 
   return (
-    <AdminShell
-      title="Dashboard"
-      subtitle="A quick overview of registration health, team activity, and what needs attention right now."
-    >
+    <AdminShell title="Dashboard" subtitle="Registration and payment health at a glance.">
       {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className={`${cardStyles} animate-pulse`}>
-              <div className="h-3 w-24 rounded-full bg-white/10" />
-              <div className="mt-4 h-8 w-20 rounded-full bg-white/10" />
-              <div className="mt-6 h-2 w-full rounded-full bg-white/10" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className={`${cardClass} animate-pulse`}>
+              <div className="h-3 w-20 rounded-full bg-white/10" />
+              <div className="mt-3 h-7 w-16 rounded-full bg-white/10" />
             </div>
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
-          {error}
-        </div>
+        <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>
       ) : (
-        <div className="grid gap-5">
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {summaryCards.map((card) => (
-              <article key={card.label} className={`${cardStyles} bg-gradient-to-br ${card.tone}`}>
-                <p className="text-sm text-white/65">{card.label}</p>
-                <h3 className="mt-3 text-4xl font-semibold tracking-tight">{card.value}</h3>
+        <div className="grid gap-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {kpis.map((card) => (
+              <article key={card.label} className={cardClass}>
+                <p className="text-xs text-white/55">{card.label}</p>
+                <h3 className={`mt-2 text-2xl font-semibold tracking-tight ${card.alert ? "text-amber-300" : "text-white"}`}>
+                  {card.value}
+                </h3>
               </article>
             ))}
           </section>
 
-          <section className={`${cardStyles}`}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm text-white/60">Registration overview</p>
-                <h3 className="mt-1 text-lg font-semibold">Current state</h3>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["Total registrations", data?.totalRegistrations ?? 0],
-                ["Confirmed", data?.confirmedRegistrations ?? 0],
-                ["Pending", data?.pendingRegistrations ?? 0],
-                ["Cancelled", data?.cancelledRegistrations ?? 0],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">{label}</p>
-                  <p className="mt-2 text-2xl font-semibold">{value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+          {(data?.failedPayments ?? 0) > 0 ? (
+            <button
+              onClick={() => navigate("/admin/payments")}
+              className="flex items-center justify-between gap-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-left text-sm text-red-100 transition hover:bg-red-500/15"
+            >
+              <span>
+                <span className="font-semibold">{data?.failedPayments}</span> failed payment
+                {data?.failedPayments === 1 ? "" : "s"} may need follow-up.
+              </span>
+              <span className="text-xs underline underline-offset-2">Review →</span>
+            </button>
+          ) : null}
 
-          <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-            <section className={`${cardStyles}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm text-white/60">Domain distribution</p>
-                  <h3 className="mt-1 text-lg font-semibold">Where registrations are coming from</h3>
-                </div>
-              </div>
-              <div className="mt-5 grid gap-3">
+          <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
+            <section className={cardClass}>
+              <h3 className="text-sm font-semibold text-white/85">Domains</h3>
+              <div className="mt-3 grid gap-2">
                 {(data?.registrationsByDomain ?? []).length === 0 ? (
-                  <p className="text-sm text-white/60">No domain data yet.</p>
+                  <p className="text-sm text-white/50">No domain data yet.</p>
                 ) : (
-                  data?.registrationsByDomain.map((item) => (
-                    <div key={item.domainName} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">{item.domainName}</span>
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-                          {item.total}
-                        </span>
+                  data?.registrationsByDomain.map((item) => {
+                    const max = Math.max(...(data?.registrationsByDomain.map((d) => d.total) ?? [1]), 1);
+                    return (
+                      <div key={item.domainName}>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-white/75">{item.domainName}</span>
+                          <span className="text-white/50">{item.total}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-purple-500"
+                            style={{ width: `${(item.total / max) * 100}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-purple-500 to-blue-500"
-                          style={{ width: `${Math.min(item.total * 12, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </section>
 
-            <section className={`${cardStyles}`}>
-              <div>
-                <p className="text-sm text-white/60">Recent registrations</p>
-                <h3 className="mt-1 text-lg font-semibold">Latest activity</h3>
-              </div>
-              <div className="mt-5 grid gap-3">
+            <section className={cardClass}>
+              <h3 className="text-sm font-semibold text-white/85">Recent registrations</h3>
+              <div className="mt-3 grid gap-2">
                 {(data?.recentRegistrations ?? []).length === 0 ? (
-                  <p className="text-sm text-white/60">No recent registrations.</p>
+                  <p className="text-sm text-white/50">No recent registrations.</p>
                 ) : (
                   data?.recentRegistrations.map((item) => (
-                    <article key={item.teamId} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{item.teamName}</p>
-                          <p className="mt-1 text-sm text-white/60">{item.domainName}</p>
-                        </div>
-                        <StatusBadge status={item.status} />
+                    <div key={item.teamId} className="flex items-start justify-between gap-3 border-b border-white/5 py-2 text-sm last:border-b-0">
+                      <div>
+                        <p className="font-medium text-white">{item.teamName}</p>
+                        <p className="mt-0.5 text-xs text-white/45">
+                          {item.domainName} · {formatDateTime(item.createdAt)}
+                        </p>
                       </div>
-                      <p className="mt-3 text-xs text-white/45">
-                        {item.registrationId ? `Reg ID ${item.registrationId}` : "Registration ID pending"}
-                      </p>
-                    </article>
+                      <StatusBadge status={item.status} size="sm" />
+                    </div>
                   ))
                 )}
               </div>
@@ -183,20 +161,5 @@ export default function AdminDashboard() {
         </div>
       )}
     </AdminShell>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const tone =
-    status === "CONFIRMED"
-      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-      : status === "CANCELLED"
-        ? "border-red-400/30 bg-red-500/10 text-red-100"
-        : "border-amber-400/30 bg-amber-500/10 text-amber-100";
-
-  return (
-    <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${tone}`}>
-      {status.toLowerCase()}
-    </span>
   );
 }

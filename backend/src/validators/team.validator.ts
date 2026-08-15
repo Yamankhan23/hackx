@@ -24,7 +24,7 @@ const teamMemberSchema = z.object({
 
   email: z.string().trim().email().max(255).transform((email) => email.toLowerCase()),
 
-  mobileNumber: z.string().trim().min(10).max(20),
+  mobileNumber: z.string().trim().regex(/^\+?[0-9]{10,15}$/),
 
   college: collegeSchema,
 

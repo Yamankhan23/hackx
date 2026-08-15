@@ -17,6 +17,7 @@ import {
   resumeApplication,
   updateTeam,
 } from "../../services/registration.service";
+import { getApiErrorMessage } from "../../lib/apiError";
 import type {
   College,
   Domain,
@@ -159,11 +160,7 @@ fetchColleges()
         if (cancelled) {
           return;
         }
-        setGeneralError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load your draft application."
-        );
+        setGeneralError(getApiErrorMessage(error, "Failed to load your draft application."));
         setIsResuming(false);
       });
 
@@ -241,11 +238,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
         });
       }
     } catch (error) {
-      setGeneralError(
-        error instanceof Error
-          ? error.message
-          : "Failed to save team registration."
-      );
+      setGeneralError(getApiErrorMessage(error, "Failed to save team registration."));
     } finally {
       setLoading(false);
     }

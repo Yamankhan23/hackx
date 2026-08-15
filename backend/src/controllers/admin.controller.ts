@@ -105,28 +105,30 @@ export const getDashboard = async (_req: Request, res: Response): Promise<void> 
       totalTeams,
       totalParticipants,
       verifiedParticipants,
-      totalRegistrations,
       confirmedRegistrations,
-      pendingRegistrations,
+      pendingPaymentRegistrations,
+      draftRegistrations,
       cancelledRegistrations,
       totalPayments,
       successfulPayments,
       pendingPayments,
       failedPayments,
+      totalCollected,
       domainBreakdown,
       recentRegistrations,
     ] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` }).from(teams),
       db.select({ count: sql<number>`count(*)::int` }).from(teamMembers),
       db.select({ count: sql<number>`count(*)::int` }).from(teamMembers).where(sql`${teamMembers.emailVerifiedAt} is not null`),
-      db.select({ count: sql<number>`count(*)::int` }).from(teams),
       db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "CONFIRMED")),
+      db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "PENDING_PAYMENT")),
       db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "DRAFT")),
       db.select({ count: sql<number>`count(*)::int` }).from(teams).where(eq(teams.status, "CANCELLED")),
       db.select({ count: sql<number>`count(*)::int` }).from(payments),
       db.select({ count: sql<number>`count(*)::int` }).from(payments).where(eq(payments.status, "SUCCESS")),
       db.select({ count: sql<number>`count(*)::int` }).from(payments).where(or(eq(payments.status, "CREATED"), eq(payments.status, "PENDING"))),
       db.select({ count: sql<number>`count(*)::int` }).from(payments).where(eq(payments.status, "FAILED")),
+      db.select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)::int` }).from(payments).where(eq(payments.status, "SUCCESS")),
       db
         .select({
           domainId: domains.id,
@@ -160,14 +162,16 @@ export const getDashboard = async (_req: Request, res: Response): Promise<void> 
         totalParticipants: totalParticipants[0]?.count ?? 0,
         verifiedParticipants: verifiedParticipants[0]?.count ?? 0,
         unverifiedParticipants: Math.max((totalParticipants[0]?.count ?? 0) - (verifiedParticipants[0]?.count ?? 0), 0),
-        totalRegistrations: totalRegistrations[0]?.count ?? 0,
+        totalRegistrations: totalTeams[0]?.count ?? 0,
         confirmedRegistrations: confirmedRegistrations[0]?.count ?? 0,
-        pendingRegistrations: pendingRegistrations[0]?.count ?? 0,
+        pendingPaymentRegistrations: pendingPaymentRegistrations[0]?.count ?? 0,
+        draftRegistrations: draftRegistrations[0]?.count ?? 0,
         cancelledRegistrations: cancelledRegistrations[0]?.count ?? 0,
         totalPayments: totalPayments[0]?.count ?? 0,
         successfulPayments: successfulPayments[0]?.count ?? 0,
         pendingPayments: pendingPayments[0]?.count ?? 0,
         failedPayments: failedPayments[0]?.count ?? 0,
+        totalCollected: totalCollected[0]?.total ?? 0,
         registrationsByDomain: domainBreakdown,
         recentRegistrations,
       },
@@ -197,27 +201,35 @@ export const getTeams = async (req: Request, res: Response): Promise<void> => {
     }
 
     const whereClause = filters.length ? and(...filters) : undefined;
-    const rows = await db
-      .select({
-        id: teams.id,
-        teamId: teams.teamId,
-        registrationId: teams.registrationId,
-        teamName: teams.teamName,
-        status: teams.status,
-        createdAt: teams.createdAt,
-        domainName: domains.name,
-        memberCount: sql<number>`count(${teamMembers.id})::int`,
-      })
-      .from(teams)
-      .innerJoin(domains, eq(domains.id, teams.domainId))
-      .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
-      .where(whereClause)
-      .groupBy(teams.id, domains.name)
-      .orderBy(desc(teams.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const [rows, [{ count: total } = { count: 0 }]] = await Promise.all([
+      db
+        .select({
+          id: teams.id,
+          teamId: teams.teamId,
+          registrationId: teams.registrationId,
+          teamName: teams.teamName,
+          status: teams.status,
+          createdAt: teams.createdAt,
+          domainName: domains.name,
+          memberCount: sql<number>`count(${teamMembers.id})::int`,
+        })
+        .from(teams)
+        .innerJoin(domains, eq(domains.id, teams.domainId))
+        .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+        .where(whereClause)
+        .groupBy(teams.id, domains.name)
+        .orderBy(desc(teams.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ count: sql<number>`count(distinct ${teams.id})::int` })
+        .from(teams)
+        .innerJoin(domains, eq(domains.id, teams.domainId))
+        .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+        .where(whereClause),
+    ]);
 
-    res.json({ success: true, data: rows, meta: { page, limit } });
+    res.json({ success: true, data: rows, meta: { page, limit, total } });
   } catch (error) {
     console.error("Get teams error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch teams" });
@@ -304,33 +316,41 @@ export const getParticipants = async (req: Request, res: Response): Promise<void
     const { page, limit, offset } = pagination(req);
     const search = String(req.query.search ?? "").trim();
     const teamId = String(req.query.teamId ?? "").trim();
-    const rows = await db
-      .select({
-        id: teamMembers.id,
-        teamId: teams.teamId,
-        name: teamMembers.fullName,
-        email: teamMembers.email,
-        emailVerified: teamMembers.emailVerifiedAt,
-        role: teamMembers.role,
-        college: colleges.name,
-        branch: teamMembers.branch,
-        yearOfStudy: teamMembers.yearOfStudy,
-        region: teamMembers.region,
-        teamName: teams.teamName,
-      })
-      .from(teamMembers)
-      .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
-      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-      .where(
-        and(
-          search ? or(ilike(teamMembers.fullName, `%${search}%`), ilike(teamMembers.email, `%${search}%`))! : undefined,
-          teamId ? eq(teams.teamId, teamId) : undefined
-        )
-      )
-      .orderBy(desc(teamMembers.createdAt))
-      .limit(limit)
-      .offset(offset);
-    res.json({ success: true, data: rows, meta: { page, limit } });
+    const whereClause = and(
+      search ? or(ilike(teamMembers.fullName, `%${search}%`), ilike(teamMembers.email, `%${search}%`))! : undefined,
+      teamId ? eq(teams.teamId, teamId) : undefined
+    );
+    const [rows, [{ count: total } = { count: 0 }]] = await Promise.all([
+      db
+        .select({
+          id: teamMembers.id,
+          teamId: teams.teamId,
+          name: teamMembers.fullName,
+          email: teamMembers.email,
+          emailVerified: teamMembers.emailVerifiedAt,
+          role: teamMembers.role,
+          college: colleges.name,
+          branch: teamMembers.branch,
+          yearOfStudy: teamMembers.yearOfStudy,
+          region: teamMembers.region,
+          teamName: teams.teamName,
+          createdAt: teamMembers.createdAt,
+        })
+        .from(teamMembers)
+        .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
+        .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+        .where(whereClause)
+        .orderBy(desc(teamMembers.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(teamMembers)
+        .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
+        .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+        .where(whereClause),
+    ]);
+    res.json({ success: true, data: rows, meta: { page, limit, total } });
   } catch (error) {
     console.error("Get participants error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch participants" });
@@ -368,53 +388,82 @@ export const getParticipantById = async (req: Request, res: Response): Promise<v
   }
 };
 
+const paymentSelection = {
+  id: payments.id,
+  paymentId: payments.paymentId,
+  teamId: teams.teamId,
+  teamName: teams.teamName,
+  amount: payments.amount,
+  currency: payments.currency,
+  status: payments.status,
+  method: payments.method,
+  failureReason: payments.failureReason,
+  razorpayOrderId: payments.razorpayOrderId,
+  razorpayPaymentId: payments.razorpayPaymentId,
+  paidAt: payments.paidAt,
+  createdAt: payments.createdAt,
+};
+
 export const getPayments = async (req: Request, res: Response): Promise<void> => {
-  const { page, limit, offset } = pagination(req);
-  const rows = await db
-    .select({
-      id: payments.id,
-      paymentId: payments.paymentId,
-      teamName: teams.teamName,
-      amount: payments.amount,
-      currency: payments.currency,
-      status: payments.status,
-      razorpayOrderId: payments.razorpayOrderId,
-      razorpayPaymentId: payments.razorpayPaymentId,
-      paidAt: payments.paidAt,
-      createdAt: payments.createdAt,
-    })
-    .from(payments)
-    .innerJoin(teams, eq(teams.id, payments.teamId))
-    .orderBy(desc(payments.createdAt))
-    .limit(limit)
-    .offset(offset);
-  res.json({ success: true, data: rows, meta: { page, limit } });
+  try {
+    const { page, limit, offset } = pagination(req);
+    const search = String(req.query.search ?? "").trim();
+    const status = String(req.query.status ?? "").trim();
+    const filters: SQL[] = [];
+    if (status) filters.push(eq(payments.status, status as never));
+    if (search) {
+      filters.push(
+        or(
+          ilike(teams.teamName, `%${search}%`),
+          ilike(payments.paymentId, `%${search}%`),
+          ilike(payments.razorpayOrderId, `%${search}%`),
+          ilike(payments.razorpayPaymentId, `%${search}%`)
+        )!
+      );
+    }
+    const whereClause = filters.length ? and(...filters) : undefined;
+
+    const [rows, [{ count: total } = { count: 0 }]] = await Promise.all([
+      db
+        .select(paymentSelection)
+        .from(payments)
+        .innerJoin(teams, eq(teams.id, payments.teamId))
+        .where(whereClause)
+        .orderBy(desc(payments.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(payments)
+        .innerJoin(teams, eq(teams.id, payments.teamId))
+        .where(whereClause),
+    ]);
+
+    res.json({ success: true, data: rows, meta: { page, limit, total } });
+  } catch (error) {
+    console.error("Get payments error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch payments" });
+  }
 };
 
 export const getPaymentById = async (req: Request, res: Response): Promise<void> => {
-  const id = Number(req.params.id);
-  const [payment] = await db
-    .select({
-      id: payments.id,
-      paymentId: payments.paymentId,
-      teamName: teams.teamName,
-      amount: payments.amount,
-      currency: payments.currency,
-      status: payments.status,
-      razorpayOrderId: payments.razorpayOrderId,
-      razorpayPaymentId: payments.razorpayPaymentId,
-      paidAt: payments.paidAt,
-      createdAt: payments.createdAt,
-    })
-    .from(payments)
-    .innerJoin(teams, eq(teams.id, payments.teamId))
-    .where(eq(payments.id, id))
-    .limit(1);
-  if (!payment) {
-    res.status(404).json({ success: false, message: "Payment not found" });
-    return;
+  try {
+    const id = Number(req.params.id);
+    const [payment] = await db
+      .select(paymentSelection)
+      .from(payments)
+      .innerJoin(teams, eq(teams.id, payments.teamId))
+      .where(eq(payments.id, id))
+      .limit(1);
+    if (!payment) {
+      res.status(404).json({ success: false, message: "Payment not found" });
+      return;
+    }
+    res.json({ success: true, data: payment });
+  } catch (error) {
+    console.error("Get payment error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch payment" });
   }
-  res.json({ success: true, data: payment });
 };
 
 export const getDomainsAdmin = async (_req: Request, res: Response): Promise<void> => {

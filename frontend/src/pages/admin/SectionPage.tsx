@@ -5,6 +5,7 @@ import {
   getApiErrorMessage,
   type College,
   type Domain,
+  type ListMeta,
   type ProblemStatement,
   type Round,
   type TeamStatus,
@@ -16,6 +17,11 @@ import { DomainForm } from "../../components/admin/DomainForm";
 import { CollegeForm } from "../../components/admin/CollegeForm";
 import { RoundForm } from "../../components/admin/RoundForm";
 import { ProblemStatementForm } from "../../components/admin/ProblemStatementForm";
+import { DataTable, type Column } from "../../components/admin/DataTable";
+import { Pagination } from "../../components/admin/Pagination";
+import { StatusBadge } from "../../components/admin/StatusBadge";
+import { formatDateTime } from "../../lib/formatDate";
+import { formatMoney } from "../../lib/formatMoney";
 import AdminShell from "./AdminShell";
 
 type SectionKey =
@@ -29,8 +35,16 @@ type SectionKey =
 
 type Row = Record<string, unknown>;
 
+const PAGE_SIZE = 10;
+const PAGINATED_SECTIONS: SectionKey[] = ["teams", "participants", "payments"];
 const CRUD_SECTIONS: SectionKey[] = ["domains", "colleges", "rounds", "problem-statements"];
 const TEAM_STATUSES: TeamStatus[] = ["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CANCELLED"];
+const PAYMENT_STATUS_FILTERS = [
+  { value: "SUCCESS", label: "Paid" },
+  { value: "CREATED", label: "Pending" },
+  { value: "FAILED", label: "Failed" },
+  { value: "REFUNDED", label: "Refunded" },
+];
 
 const labels: Record<SectionKey, string> = {
   teams: "Teams",
@@ -42,9 +56,13 @@ const labels: Record<SectionKey, string> = {
   "problem-statements": "Problem Statements",
 };
 
+const subtitles: Partial<Record<SectionKey, string>> = {
+  teams: "Scan team status, review members, and jump into details without wading through a dense table.",
+  participants: "Search participants quickly and inspect verification and college context.",
+  payments: "Who paid, what for, how much, and when — synced from Razorpay.",
+};
+
 const listLoaders: Partial<Record<SectionKey, () => Promise<Row[]>>> = {
-  teams: () => adminService.getTeams() as Promise<Row[]>,
-  participants: () => adminService.getParticipants() as Promise<Row[]>,
   domains: () => adminService.getDomains() as Promise<Row[]>,
   colleges: () => adminService.getColleges() as Promise<Row[]>,
   rounds: () => adminService.getRounds() as Promise<Row[]>,
@@ -65,62 +83,97 @@ export default function AdminSectionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const key = section as SectionKey | undefined;
+
   const [rows, setRows] = useState<Row[]>([]);
+  const [meta, setMeta] = useState<ListMeta>({ page: 1, limit: PAGE_SIZE, total: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<string | number | null>(null);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editingRow, setEditingRow] = useState<Row | null>(null);
   const teamIdFilter = searchParams.get("teamId") ?? "";
 
-  const title = useMemo(() => {
-    if (!key || !(key in labels)) return "Admin";
-    return labels[key];
-  }, [key]);
+  const title = useMemo(() => (key && key in labels ? labels[key] : "Admin"), [key]);
+  const isPaginated = key ? PAGINATED_SECTIONS.includes(key) : false;
+
+  // Debounce free-text search before it hits the server-paginated endpoints —
+  // client-filtered (CRUD) sections don't need this, they filter instantly.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // Reset to page 1 whenever the active filters change — computed during
+  // render (React's documented pattern for resetting state on a derived
+  // change) rather than via a setState-in-effect.
+  const filterSignature = `${key ?? ""}|${debouncedSearch}|${statusFilter}|${teamIdFilter}`;
+  const [prevFilterSignature, setPrevFilterSignature] = useState(filterSignature);
+  if (prevFilterSignature !== filterSignature) {
+    setPrevFilterSignature(filterSignature);
+    if (page !== 1) setPage(1);
+  }
 
   const loadRows = useCallback(async () => {
-    if (!key || key === "payments") {
-      setRows([]);
-      return;
-    }
-
-    const loader = listLoaders[key];
-    if (!loader) return;
-
+    if (!key) return;
     setLoading(true);
     setError("");
 
-    const params: Record<string, string> = {};
-    if (key === "participants" && teamIdFilter) {
-      params.teamId = teamIdFilter;
-    }
-
     try {
-      const data = key === "participants"
-        ? ((await adminService.getParticipants(params)) as Row[])
-        : await loader();
-      setRows(Array.isArray(data) ? data : []);
+      if (key === "payments") {
+        const result = await adminService.getPayments({
+          page,
+          limit: PAGE_SIZE,
+          ...(debouncedSearch ? { search: debouncedSearch } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+        });
+        setRows(result.data as unknown as Row[]);
+        setMeta(result.meta);
+      } else if (key === "teams") {
+        const result = await adminService.getTeams({
+          page,
+          limit: PAGE_SIZE,
+          ...(debouncedSearch ? { search: debouncedSearch } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+        });
+        setRows(result.data);
+        setMeta(result.meta);
+      } else if (key === "participants") {
+        const result = await adminService.getParticipants({
+          page,
+          limit: PAGE_SIZE,
+          ...(debouncedSearch ? { search: debouncedSearch } : {}),
+          ...(teamIdFilter ? { teamId: teamIdFilter } : {}),
+        });
+        setRows(result.data);
+        setMeta(result.meta);
+      } else {
+        const loader = listLoaders[key];
+        if (!loader) return;
+        const data = await loader();
+        setRows(data);
+        setMeta({ page: 1, limit: Math.max(data.length, 1), total: data.length });
+      }
     } catch {
-      setError("Failed to load data");
+      setError(`Failed to load ${title.toLowerCase()}.`);
     } finally {
       setLoading(false);
     }
-  }, [key, teamIdFilter]);
+  }, [key, page, debouncedSearch, statusFilter, teamIdFilter, title]);
 
   useEffect(() => {
-    loadRows();
+    // Deferred to a microtask so the fetch's state updates don't run
+    // synchronously within the effect body itself.
+    void Promise.resolve().then(loadRows);
   }, [loadRows]);
 
   const filteredRows = useMemo(() => {
-    if (!query.trim()) return rows;
-    const needle = query.toLowerCase();
-    return rows.filter((row) =>
-      Object.entries(row).some(([, value]) =>
-        stringify(value).toLowerCase().includes(needle)
-      )
-    );
-  }, [query, rows]);
+    if (!key || isPaginated || !search.trim()) return rows;
+    const needle = search.toLowerCase();
+    return rows.filter((row) => Object.values(row).some((value) => stringify(value).toLowerCase().includes(needle)));
+  }, [key, isPaginated, search, rows]);
 
   const closeModal = () => {
     setModalMode(null);
@@ -151,13 +204,9 @@ export default function AdminSectionPage() {
   const handleToggle = async (row: Row) => {
     const id = Number(row.id);
     try {
-      if (key === "domains") {
-        await adminService.toggleDomainStatus(id, !(row.isActive as boolean));
-      } else if (key === "colleges") {
-        await adminService.toggleCollegeStatus(id, !(row.isActive as boolean));
-      } else if (key === "problem-statements") {
-        await adminService.publishProblemStatement(id, !(row.isPublished as boolean));
-      }
+      if (key === "domains") await adminService.toggleDomainStatus(id, !(row.isActive as boolean));
+      else if (key === "colleges") await adminService.toggleCollegeStatus(id, !(row.isActive as boolean));
+      else if (key === "problem-statements") await adminService.publishProblemStatement(id, !(row.isPublished as boolean));
       toast.success("Status updated.");
       loadRows();
     } catch (err) {
@@ -166,7 +215,10 @@ export default function AdminSectionPage() {
   };
 
   const handleTeamStatusChange = async (row: Row, status: TeamStatus) => {
-    if (status === "CANCELLED" && !window.confirm(`Cancel team "${row.teamName}"? This can be undone later, but the team won't count toward confirmed registrations.`)) {
+    if (
+      status === "CANCELLED" &&
+      !window.confirm(`Cancel team "${row.teamName}"? This can be undone later, but the team won't count toward confirmed registrations.`)
+    ) {
       return;
     }
     try {
@@ -178,191 +230,84 @@ export default function AdminSectionPage() {
     }
   };
 
+  const actionHandlers: ActionHandlers = {
+    navigate,
+    onTeamStatusChange: handleTeamStatusChange,
+    onToggle: handleToggle,
+    onEdit: (row) => {
+      setEditingRow(row);
+      setModalMode("edit");
+    },
+  };
+  const columns = getColumns(key, actionHandlers);
+
   return (
     <AdminShell
       title={title}
-      subtitle={
-        key === "teams"
-          ? "Scan team status, review members, and jump into details without wading through a dense table."
-          : key === "participants"
-            ? "Search participants quickly and inspect verification and college context."
-            : key === "payments"
-              ? "Payment records collected via Razorpay. Read-only here for now."
-              : "Manage records in a clean, mobile-friendly card layout."
-      }
+      subtitle={key ? subtitles[key] ?? "Manage records in a clean, searchable list." : undefined}
       primaryAction={
         key && CRUD_SECTIONS.includes(key) ? (
           <button
             type="button"
             onClick={() => setModalMode("create")}
-            className="inline-flex h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 text-sm font-semibold text-white transition hover:brightness-110"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 text-sm font-semibold text-white transition hover:brightness-110"
           >
             + {createLabels[key] ?? "New"}
           </button>
-        ) : key !== "payments" ? (
-          <div className="rounded-2xl border border-purple-400/25 bg-purple-500/10 px-3 py-2 text-sm text-purple-100">
-            {rows.length} records
+        ) : (
+          <div className="rounded-xl border border-purple-400/25 bg-purple-500/10 px-3 py-2 text-sm text-purple-100">
+            {meta.total} {meta.total === 1 ? "record" : "records"}
           </div>
-        ) : null
+        )
       }
     >
-      {key === "payments" ? (
-        <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 text-white/70">
-          Payments are recorded automatically once Razorpay checkout completes. A dedicated management view isn't wired up yet.
-        </div>
-      ) : (
-        <div className="grid gap-5">
-          {key === "participants" && teamIdFilter ? (
-            <section className="rounded-[24px] border border-purple-400/20 bg-purple-500/10 px-4 py-3 text-sm text-purple-100">
+      <div className="grid gap-4">
+        {key === "participants" && teamIdFilter ? (
+          <section className="flex items-center justify-between gap-3 rounded-2xl border border-purple-400/20 bg-purple-500/10 px-4 py-3 text-sm text-purple-100">
+            <span>
               Showing participants for team <span className="font-semibold">{teamIdFilter}</span>
-              <button
-                className="ml-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80"
-                onClick={() => setSearchParams({})}
-              >
-                Clear filter
-              </button>
-            </section>
-          ) : null}
-
-          <section className="rounded-[24px] border border-white/10 bg-white/5 p-4 shadow-[0_20px_60px_rgba(8,15,35,0.25)]">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm text-white/60">Search</p>
-                <h3 className="mt-1 text-lg font-semibold">Find records fast</h3>
-              </div>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search ${title.toLowerCase()}`}
-                className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-sm outline-none transition placeholder:text-white/35 focus:border-purple-400/40 sm:max-w-sm"
-              />
-            </div>
+            </span>
+            <button
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80"
+              onClick={() => setSearchParams({})}
+            >
+              Clear
+            </button>
           </section>
+        ) : null}
 
-          {loading ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="rounded-[24px] border border-white/10 bg-white/5 p-4 animate-pulse sm:p-5">
-                  <div className="h-3 w-28 rounded-full bg-white/10" />
-                  <div className="mt-4 h-5 w-3/4 rounded-full bg-white/10" />
-                  <div className="mt-3 h-3 w-1/2 rounded-full bg-white/10" />
-                  <div className="mt-6 h-10 rounded-2xl bg-white/10" />
-                </div>
-              ))}
-            </div>
-          ) : error ? (
-            <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">{error}</div>
-          ) : filteredRows.length === 0 ? (
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-8 text-center">
-              <p className="text-lg font-semibold">No records found</p>
-              <p className="mt-2 text-sm text-white/60">
-                {query ? "Try a different search term." : "Nothing has been added yet."}
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredRows.map((row, index) => {
-                const id = String(row.id ?? row.teamId ?? row.paymentId ?? index);
-                const isOpen = expanded === id;
-                return (
-                  <article
-                    key={id}
-                    className="rounded-[24px] border border-white/10 bg-white/5 p-4 shadow-[0_20px_60px_rgba(8,15,35,0.25)] sm:p-5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.25em] text-white/45">Record</p>
-                        <h3 className="mt-2 text-lg font-semibold">{primaryLabel(key, row)}</h3>
-                      </div>
-                      <StatusPill value={row.status ?? row.isPublished ?? row.emailVerified} />
-                    </div>
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Search ${title.toLowerCase()}`}
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-purple-400/40 sm:max-w-xs"
+          />
+          {key === "teams" ? (
+            <StatusFilter value={statusFilter} onChange={setStatusFilter} options={TEAM_STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))} />
+          ) : null}
+          {key === "payments" ? (
+            <StatusFilter value={statusFilter} onChange={setStatusFilter} options={PAYMENT_STATUS_FILTERS} />
+          ) : null}
+        </section>
 
-                    <div className="mt-3 grid gap-2 text-sm text-white/65">
-                      {summaryLines(key, row).slice(0, 3).map((line) => (
-                        <p key={line}>{line}</p>
-                      ))}
-                    </div>
+        {error ? (
+          <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={filteredRows}
+            loading={loading}
+            rowKey={(row, index) => String(row.id ?? row.teamId ?? row.paymentId ?? index)}
+            emptyMessage={search || statusFilter ? "Try a different search or filter." : "Nothing here yet."}
+            mobileTitle={key ? (row) => mobileTitleFor(key, row) : undefined}
+            mobileBadge={key ? (row) => mobileBadgeFor(key, row) : undefined}
+            mobileExtra={key ? (row) => mobileActionsFor(key, row, actionHandlers) : undefined}
+          />
+        )}
 
-                    {key === "teams" ? (
-                      <label className="mt-3 grid gap-1 text-xs text-white/50">
-                        Status
-                        <select
-                          value={String(row.status ?? "DRAFT")}
-                          onChange={(e) => handleTeamStatusChange(row, e.target.value as TeamStatus)}
-                          className="h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none focus:border-purple-400/50"
-                        >
-                          {TEAM_STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                              {status.replace("_", " ")}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                      <button
-                        className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
-                        onClick={() => setExpanded(isOpen ? null : id)}
-                      >
-                        {isOpen ? "Hide details" : "View details"}
-                      </button>
-                      {key === "teams" ? (
-                        <button
-                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white transition hover:brightness-110"
-                          onClick={() => navigate(`/admin/participants?teamId=${encodeURIComponent(String(row.teamId ?? ""))}`)}
-                        >
-                          Participants
-                        </button>
-                      ) : null}
-                      {key && CRUD_SECTIONS.includes(key) ? (
-                        <button
-                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
-                          onClick={() => {
-                            setEditingRow(row);
-                            setModalMode("edit");
-                          }}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                      {key === "domains" || key === "colleges" ? (
-                        <button
-                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
-                          onClick={() => handleToggle(row)}
-                        >
-                          {row.isActive === false ? "Activate" : "Deactivate"}
-                        </button>
-                      ) : null}
-                      {key === "problem-statements" ? (
-                        <button
-                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
-                          onClick={() => handleToggle(row)}
-                        >
-                          {row.isPublished ? "Unpublish" : "Publish"}
-                        </button>
-                      ) : null}
-                    </div>
-
-                    {isOpen ? (
-                      <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/70">
-                        {Object.entries(row)
-                          .filter(([field]) => field !== "passwordHash" && field !== "razorpaySignature")
-                          .map(([field, value]) => (
-                            <div key={field} className="flex items-start justify-between gap-3 border-b border-white/5 py-2 last:border-b-0">
-                              <span className="text-white/45">{formatKey(field)}</span>
-                              <span className="text-right">{stringify(value)}</span>
-                            </div>
-                          ))}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+        {isPaginated && !error ? <Pagination page={meta.page} limit={meta.limit} total={meta.total} onPageChange={setPage} /> : null}
+      </div>
 
       {modalMode && key === "domains" ? (
         <Modal title={modalMode === "create" ? "New Domain" : "Edit Domain"} onClose={closeModal}>
@@ -407,6 +352,31 @@ export default function AdminSectionPage() {
   );
 }
 
+function StatusFilter({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition focus:border-purple-400/40"
+    >
+      <option value="">All statuses</option>
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value} className="bg-[#081029]">
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function stringify(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Verified" : "Pending";
@@ -415,96 +385,312 @@ function stringify(value: unknown) {
   return JSON.stringify(value);
 }
 
-function formatKey(key: string) {
-  return key
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+type ActionHandlers = {
+  navigate: ReturnType<typeof useNavigate>;
+  onTeamStatusChange: (row: Row, status: TeamStatus) => void;
+  onToggle: (row: Row) => void;
+  onEdit: (row: Row) => void;
+};
+
+function getColumns(key: SectionKey | undefined, handlers: ActionHandlers): Column<Row>[] {
+  switch (key) {
+    case "teams":
+      return [
+        {
+          key: "team",
+          header: "Team",
+          render: (row) => (
+            <div>
+              <p className="font-medium text-white">{String(row.teamName ?? "—")}</p>
+              <p className="text-xs text-white/45">{String(row.teamId ?? "—")}</p>
+            </div>
+          ),
+        },
+        { key: "domain", header: "Domain", render: (row) => String(row.domainName ?? "—") },
+        { key: "members", header: "Members", render: (row) => String(row.memberCount ?? 0) },
+        { key: "status", header: "Status", render: (row) => <StatusBadge status={String(row.status ?? "DRAFT")} /> },
+        { key: "registered", header: "Registered", render: (row) => formatDateTime(row.createdAt as string) },
+        {
+          key: "actions",
+          header: "Actions",
+          align: "right",
+          desktopOnly: true,
+          render: (row) => (
+            <div className="flex items-center justify-end gap-2">
+              <select
+                value={String(row.status ?? "DRAFT")}
+                onChange={(e) => handlers.onTeamStatusChange(row, e.target.value as TeamStatus)}
+                className="h-8 rounded-lg border border-white/10 bg-black/20 px-2 text-xs text-white outline-none focus:border-purple-400/50"
+              >
+                {TEAM_STATUSES.map((s) => (
+                  <option key={s} value={s} className="bg-[#081029]">
+                    {s.replace("_", " ")}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-medium text-white/75 transition hover:bg-white/10"
+                onClick={() => handlers.navigate(`/admin/participants?teamId=${encodeURIComponent(String(row.teamId ?? ""))}`)}
+              >
+                Members
+              </button>
+            </div>
+          ),
+        },
+      ];
+
+    case "participants":
+      return [
+        {
+          key: "participant",
+          header: "Participant",
+          render: (row) => (
+            <div>
+              <p className="font-medium text-white">{String(row.name ?? "—")}</p>
+              <p className="text-xs text-white/45">{String(row.email ?? "—")}</p>
+            </div>
+          ),
+        },
+        { key: "team", header: "Team", render: (row) => String(row.teamName ?? "—") },
+        { key: "college", header: "College", render: (row) => String(row.college ?? "—") },
+        { key: "year", header: "Year", render: (row) => String(row.yearOfStudy ?? "—") },
+        { key: "verified", header: "Verified", render: (row) => <StatusBadge status={row.emailVerified ? "VERIFIED" : "UNVERIFIED"} /> },
+        { key: "registered", header: "Registered", render: (row) => formatDateTime(row.createdAt as string) },
+      ];
+
+    case "payments":
+      return [
+        {
+          key: "team",
+          header: "Team",
+          render: (row) => (
+            <div>
+              <p className="font-medium text-white">{String(row.teamName ?? "—")}</p>
+              <p className="text-xs text-white/45">Registration fee</p>
+            </div>
+          ),
+        },
+        {
+          key: "amount",
+          header: "Amount",
+          render: (row) => <span className="font-medium text-white">{formatMoney(Number(row.amount ?? 0), String(row.currency ?? "INR"))}</span>,
+        },
+        {
+          key: "method",
+          header: "Method",
+          render: (row) => (row.method ? <span className="capitalize">{String(row.method)}</span> : <span className="text-white/35">—</span>),
+        },
+        {
+          key: "when",
+          header: "When",
+          render: (row) =>
+            row.paidAt ? (
+              <div>
+                <p>{formatDateTime(row.paidAt as string)}</p>
+                <p className="text-[11px] text-white/40">Paid</p>
+              </div>
+            ) : (
+              <div>
+                <p>{formatDateTime(row.createdAt as string)}</p>
+                <p className="text-[11px] text-white/40">Created</p>
+              </div>
+            ),
+        },
+        {
+          key: "status",
+          header: "Status",
+          render: (row) => (
+            <div>
+              <StatusBadge status={String(row.status ?? "CREATED")} />
+              {row.status === "FAILED" && row.failureReason ? (
+                <p className="mt-1 max-w-[16rem] text-[11px] text-red-300/80">{String(row.failureReason)}</p>
+              ) : null}
+            </div>
+          ),
+        },
+        {
+          key: "reference",
+          header: "Reference",
+          render: (row) => (
+            <div className="font-mono text-[11px] leading-relaxed text-white/50">
+              <p>{String(row.paymentId ?? "—")}</p>
+              {row.razorpayPaymentId ? <p className="break-all text-white/35">{String(row.razorpayPaymentId)}</p> : null}
+            </div>
+          ),
+        },
+      ];
+
+    case "domains":
+      return [
+        { key: "name", header: "Name", render: (row) => <span className="font-medium text-white">{String(row.name ?? "—")}</span> },
+        { key: "description", header: "Description", render: (row) => String(row.description ?? "—") },
+        {
+          key: "status",
+          header: "Status",
+          render: (row) => <StatusBadge status={row.isActive !== false ? "ACTIVE" : "INACTIVE"} />,
+        },
+        {
+          key: "actions",
+          header: "Actions",
+          align: "right",
+          desktopOnly: true,
+          render: (row) => (
+            <div className="flex items-center justify-end gap-2">
+              <button className={actionBtn} onClick={() => handlers.onEdit(row)}>
+                Edit
+              </button>
+              <button className={actionBtn} onClick={() => handlers.onToggle(row)}>
+                {row.isActive === false ? "Activate" : "Deactivate"}
+              </button>
+            </div>
+          ),
+        },
+      ];
+
+    case "colleges":
+      return [
+        { key: "name", header: "Name", render: (row) => <span className="font-medium text-white">{String(row.name ?? "—")}</span> },
+        { key: "collegeId", header: "College ID", render: (row) => String(row.collegeId ?? "—") },
+        { key: "region", header: "Region", render: (row) => String(row.region ?? "—") },
+        { key: "university", header: "University", render: (row) => String(row.university ?? "—") },
+        { key: "status", header: "Status", render: (row) => <StatusBadge status={row.isActive !== false ? "ACTIVE" : "INACTIVE"} /> },
+        {
+          key: "actions",
+          header: "Actions",
+          align: "right",
+          desktopOnly: true,
+          render: (row) => (
+            <div className="flex items-center justify-end gap-2">
+              <button className={actionBtn} onClick={() => handlers.onEdit(row)}>
+                Edit
+              </button>
+              <button className={actionBtn} onClick={() => handlers.onToggle(row)}>
+                {row.isActive === false ? "Activate" : "Deactivate"}
+              </button>
+            </div>
+          ),
+        },
+      ];
+
+    case "rounds":
+      return [
+        { key: "name", header: "Name", render: (row) => <span className="font-medium text-white">{String(row.name ?? "—")}</span> },
+        { key: "roundId", header: "Round ID", render: (row) => String(row.roundId ?? "—") },
+        { key: "type", header: "Type", render: (row) => String(row.type ?? "—") },
+        { key: "roundNumber", header: "Round #", render: (row) => String(row.roundNumber ?? "—") },
+        { key: "status", header: "Status", render: (row) => <StatusBadge status={String(row.status ?? "UPCOMING")} /> },
+        {
+          key: "actions",
+          header: "Actions",
+          align: "right",
+          desktopOnly: true,
+          render: (row) => (
+            <div className="flex items-center justify-end gap-2">
+              <button className={actionBtn} onClick={() => handlers.onEdit(row)}>
+                Edit
+              </button>
+            </div>
+          ),
+        },
+      ];
+
+    case "problem-statements":
+      return [
+        { key: "title", header: "Title", render: (row) => <span className="font-medium text-white">{String(row.title ?? "—")}</span> },
+        { key: "problemStatementId", header: "Problem ID", render: (row) => String(row.problemStatementId ?? "—") },
+        { key: "domain", header: "Domain", render: (row) => String(row.domainName ?? "—") },
+        { key: "published", header: "Published", render: (row) => <StatusBadge status={row.isPublished ? "PUBLISHED" : "UNPUBLISHED"} /> },
+        {
+          key: "actions",
+          header: "Actions",
+          align: "right",
+          desktopOnly: true,
+          render: (row) => (
+            <div className="flex items-center justify-end gap-2">
+              <button className={actionBtn} onClick={() => handlers.onEdit(row)}>
+                Edit
+              </button>
+              <button className={actionBtn} onClick={() => handlers.onToggle(row)}>
+                {row.isPublished ? "Unpublish" : "Publish"}
+              </button>
+            </div>
+          ),
+        },
+      ];
+
+    default:
+      return [];
+  }
 }
 
-function primaryLabel(section: SectionKey | undefined, row: Row) {
-  if (section === "teams") return String(row.teamName ?? row.teamId ?? "Team");
-  if (section === "participants") return String(row.name ?? row.fullName ?? row.email ?? "Participant");
-  if (section === "domains") return String(row.name ?? "Domain");
-  if (section === "colleges") return String(row.name ?? "College");
-  if (section === "rounds") return String(row.name ?? row.roundId ?? "Round");
-  if (section === "problem-statements") return String(row.title ?? row.problemStatementId ?? "Problem Statement");
-  return String(row.id ?? "Record");
+const actionBtn =
+  "h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-medium text-white/75 transition hover:bg-white/10";
+
+function mobileTitleFor(key: SectionKey, row: Row) {
+  if (key === "teams") return String(row.teamName ?? "Team");
+  if (key === "participants") return String(row.name ?? "Participant");
+  if (key === "payments") return String(row.teamName ?? "Payment");
+  if (key === "domains") return String(row.name ?? "Domain");
+  if (key === "colleges") return String(row.name ?? "College");
+  if (key === "rounds") return String(row.name ?? "Round");
+  if (key === "problem-statements") return String(row.title ?? "Problem Statement");
+  return "Record";
 }
 
-function summaryLines(section: SectionKey | undefined, row: Row) {
-  if (section === "teams") {
-    return [
-      `Team ID: ${stringify(row.teamId)}`,
-      `Registration ID: ${stringify(row.registrationId)}`,
-      `Domain: ${stringify(row.domainName)}`,
-      `Status: ${stringify(row.status)}`,
-    ];
-  }
-
-  if (section === "participants") {
-    return [
-      `Email: ${stringify(row.email)}`,
-      `Team: ${stringify(row.teamName)}`,
-      `College: ${stringify(row.college)}`,
-      `Year: ${stringify(row.yearOfStudy)}`,
-    ];
-  }
-
-  if (section === "domains") {
-    return [
-      `Description: ${stringify(row.description)}`,
-      `Status: ${row.isActive === false ? "Inactive" : "Active"}`,
-    ];
-  }
-
-  if (section === "colleges") {
-    return [
-      `College ID: ${stringify(row.collegeId)}`,
-      `Region: ${stringify(row.region)}`,
-      `University: ${stringify(row.university)}`,
-      `Status: ${row.isActive === false ? "Inactive" : "Active"}`,
-    ];
-  }
-
-  if (section === "rounds") {
-    return [
-      `Round ID: ${stringify(row.roundId)}`,
-      `Type: ${stringify(row.type)}`,
-      `Round number: ${stringify(row.roundNumber)}`,
-      `Status: ${stringify(row.status)}`,
-    ];
-  }
-
-  if (section === "problem-statements") {
-    return [
-      `Problem ID: ${stringify(row.problemStatementId)}`,
-      `Domain: ${stringify(row.domainName)}`,
-      `Published: ${row.isPublished ? "Yes" : "No"}`,
-    ];
-  }
-
-  return Object.entries(row)
-    .filter(([field]) => field !== "id")
-    .slice(0, 3)
-    .map(([field, value]) => `${formatKey(field)}: ${stringify(value)}`);
+function mobileBadgeFor(key: SectionKey, row: Row) {
+  if (key === "teams") return <StatusBadge status={String(row.status ?? "DRAFT")} size="sm" />;
+  if (key === "participants") return <StatusBadge status={row.emailVerified ? "VERIFIED" : "UNVERIFIED"} size="sm" />;
+  if (key === "payments") return <StatusBadge status={String(row.status ?? "CREATED")} size="sm" />;
+  if (key === "domains" || key === "colleges") return <StatusBadge status={row.isActive !== false ? "ACTIVE" : "INACTIVE"} size="sm" />;
+  if (key === "rounds") return <StatusBadge status={String(row.status ?? "UPCOMING")} size="sm" />;
+  if (key === "problem-statements") return <StatusBadge status={row.isPublished ? "PUBLISHED" : "UNPUBLISHED"} size="sm" />;
+  return null;
 }
 
-function StatusPill({ value }: { value: unknown }) {
-  const status = typeof value === "boolean" ? (value ? "Verified" : "Pending") : stringify(value);
-  const normalized = status.toLowerCase();
-  const tone =
-    normalized.includes("confirmed") || normalized.includes("verified") || normalized === "true"
-      ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
-      : normalized.includes("pending")
-        ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
-        : normalized.includes("cancelled") || normalized.includes("failed") || normalized === "false"
-          ? "border-red-400/25 bg-red-500/10 text-red-100"
-          : "border-white/10 bg-white/5 text-white/70";
+function mobileActionsFor(key: SectionKey, row: Row, handlers: ActionHandlers) {
+  if (key === "teams") {
+    return (
+      <div className="grid gap-2">
+        <select
+          value={String(row.status ?? "DRAFT")}
+          onChange={(e) => handlers.onTeamStatusChange(row, e.target.value as TeamStatus)}
+          className="h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none focus:border-purple-400/50"
+        >
+          {TEAM_STATUSES.map((s) => (
+            <option key={s} value={s} className="bg-[#081029]">
+              {s.replace("_", " ")}
+            </option>
+          ))}
+        </select>
+        <button
+          className="h-10 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white/85 transition hover:bg-white/10"
+          onClick={() => handlers.navigate(`/admin/participants?teamId=${encodeURIComponent(String(row.teamId ?? ""))}`)}
+        >
+          View members
+        </button>
+      </div>
+    );
+  }
 
-  return (
-    <span className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${tone}`}>
-      {status}
-    </span>
-  );
+  if (CRUD_SECTIONS.includes(key)) {
+    return (
+      <div className="flex gap-2">
+        <button className="h-10 flex-1 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white/85 transition hover:bg-white/10" onClick={() => handlers.onEdit(row)}>
+          Edit
+        </button>
+        {key === "domains" || key === "colleges" ? (
+          <button className="h-10 flex-1 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white/85 transition hover:bg-white/10" onClick={() => handlers.onToggle(row)}>
+            {row.isActive === false ? "Activate" : "Deactivate"}
+          </button>
+        ) : null}
+        {key === "problem-statements" ? (
+          <button className="h-10 flex-1 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white/85 transition hover:bg-white/10" onClick={() => handlers.onToggle(row)}>
+            {row.isPublished ? "Unpublish" : "Publish"}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return null;
 }

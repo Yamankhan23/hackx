@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { resumeApplication } from "../../services/registration.service";
 import { createPaymentOrder, verifyPayment } from "../../services/payment.service";
 import { useToast } from "../../hooks/useToast";
+import { getApiErrorMessage } from "../../lib/apiError";
 import type { ResumeApplicationResponse } from "../../types/registration";
 
 type LoadState =
@@ -37,10 +38,7 @@ export function ResumePage() {
         if (!cancelled) {
           setState({
             status: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to load your application draft.",
+            message: getApiErrorMessage(error, "Failed to load your application draft."),
           });
         }
       });
@@ -236,9 +234,12 @@ function PaymentCard({
               toast.success("Payment verified. Your team is confirmed!");
               onConfirmed();
             })
-            .catch(() => {
+            .catch((err) => {
               toast.error(
-                "We couldn't confirm your payment automatically. If money was deducted, contact support — we'll reconcile it shortly."
+                getApiErrorMessage(
+                  err,
+                  "We couldn't confirm your payment automatically. If money was deducted, contact support — we'll reconcile it shortly."
+                )
               );
             })
             .finally(() => setPaying(false));
@@ -251,9 +252,7 @@ function PaymentCard({
 
       checkout.open();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to start payment. Please try again."
-      );
+      setError(getApiErrorMessage(err, "Failed to start payment. Please try again."));
       setPaying(false);
     }
   };

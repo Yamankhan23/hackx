@@ -132,6 +132,8 @@ export const payments = pgTable("payments", {
 	amount: integer().default(400).notNull(),
 	currency: varchar({ length: 3 }).default('INR').notNull(),
 	status: paymentStatus().default('CREATED').notNull(),
+	method: varchar({ length: 30 }),
+	failureReason: text("failure_reason"),
 	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),

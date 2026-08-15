@@ -18,13 +18,17 @@ setValue: UseFormSetValue<RegistrationFormValues>;
   onRemove?: () => void;
 };
 
-const memberFields: Array<[keyof RegistrationFormValues["members"][number], string]> = [
+const memberFields: Array<[
+  keyof RegistrationFormValues["members"][number],
+  string,
+  { type?: string; inputMode?: "email" | "tel" | "numeric"; maxLength?: number }?
+]> = [
   ["fullName", "Full Name"],
-  ["email", "Email"],
-  ["mobileNumber", "Mobile Number"],
+  ["email", "Email", { type: "email", inputMode: "email" }],
+  ["mobileNumber", "Mobile Number", { type: "tel", inputMode: "tel" }],
   ["region", "Region"],
   ["branch", "Branch"],
-  ["yearOfStudy", "Year of Study"],
+  ["yearOfStudy", "Year of Study", { inputMode: "numeric", maxLength: 1 }],
 ];
 
 export function TeamMemberCard({
@@ -84,11 +88,14 @@ const handleManualNameChange = useCallback(
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {memberFields.map(([field, label]) => (
+        {memberFields.map(([field, label, inputProps]) => (
           <label key={field} className={cn("grid gap-1.5", field === "yearOfStudy" ? "sm:col-span-2" : "")}>
             <span className="text-xs font-medium text-slate-300">{label}</span>
             <input
               {...register(`members.${index}.${field}`)}
+              type={inputProps?.type}
+              inputMode={inputProps?.inputMode}
+              maxLength={inputProps?.maxLength}
               className="h-11 rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
             />
             <span className="min-h-4 text-xs text-rose-300">

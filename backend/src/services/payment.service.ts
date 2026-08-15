@@ -5,6 +5,7 @@ import { hashVerificationToken } from "../lib/verification-token";
 import { REGISTRATION_FEE_RUPEES } from "../lib/constants";
 import {
   createRazorpayOrder,
+  fetchRazorpayPayment,
   isRazorpayConfigured,
   verifyPaymentSignature,
   verifyWebhookSignature,
@@ -161,12 +162,24 @@ export const verifyAndConfirmPayment = async (input: {
     throw new Error("SIGNATURE_INVALID");
   }
 
+  // Best-effort: fetch the method straight from Razorpay now rather than
+  // waiting on the webhook, which may be delayed or (e.g. local dev without
+  // a public URL) never arrive at all. Never blocks payment confirmation.
+  let method: string | null = null;
+  try {
+    const razorpayPayment = await fetchRazorpayPayment(input.razorpayPaymentId);
+    method = razorpayPayment.method ?? null;
+  } catch (error) {
+    console.error("Failed to fetch payment method from Razorpay:", error);
+  }
+
   await db
     .update(payments)
     .set({
       status: "SUCCESS",
       razorpayPaymentId: input.razorpayPaymentId,
       razorpaySignature: input.razorpaySignature,
+      method,
       paidAt: new Date().toISOString(),
     })
     .where(eq(payments.id, payment.id));
@@ -195,7 +208,16 @@ export const handleRazorpayWebhook = async (
 
   const event = JSON.parse(rawBody.toString("utf-8")) as {
     event?: string;
-    payload?: { payment?: { entity?: { id: string; order_id: string } } };
+    payload?: {
+      payment?: {
+        entity?: {
+          id: string;
+          order_id: string;
+          method?: string;
+          error_description?: string;
+        };
+      };
+    };
   };
 
   const paymentEntity = event.payload?.payment?.entity;
@@ -214,16 +236,22 @@ export const handleRazorpayWebhook = async (
   }
 
   if (event.event === "payment.captured") {
-    if (payment.status !== "SUCCESS") {
-      await db
-        .update(payments)
-        .set({
-          status: "SUCCESS",
-          razorpayPaymentId: paymentEntity.id,
-          paidAt: new Date().toISOString(),
-        })
-        .where(eq(payments.id, payment.id));
+    // The client-side verify call usually lands before this webhook does, so
+    // status is often already SUCCESS by now — but the method still needs
+    // backfilling, so it's updated unconditionally while status/paidAt/team
+    // confirmation stay guarded to a single first-time transition.
+    const alreadyConfirmed = payment.status === "SUCCESS";
 
+    await db
+      .update(payments)
+      .set({
+        razorpayPaymentId: paymentEntity.id,
+        method: paymentEntity.method ?? null,
+        ...(alreadyConfirmed ? {} : { status: "SUCCESS", paidAt: new Date().toISOString() }),
+      })
+      .where(eq(payments.id, payment.id));
+
+    if (!alreadyConfirmed) {
       await db
         .update(teams)
         .set({ status: "CONFIRMED" })
@@ -232,11 +260,15 @@ export const handleRazorpayWebhook = async (
         );
     }
   } else if (event.event === "payment.failed") {
-    if (payment.status === "CREATED" || payment.status === "PENDING") {
-      await db
-        .update(payments)
-        .set({ status: "FAILED" })
-        .where(eq(payments.id, payment.id));
-    }
+    await db
+      .update(payments)
+      .set({
+        method: paymentEntity.method ?? null,
+        failureReason: paymentEntity.error_description ?? null,
+        ...(payment.status === "CREATED" || payment.status === "PENDING"
+          ? { status: "FAILED" as const }
+          : {}),
+      })
+      .where(eq(payments.id, payment.id));
   }
 };

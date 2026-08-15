@@ -2,6 +2,16 @@ import axios from "axios";
 
 const baseURL = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
 
+if (!baseURL) {
+  // Vite bakes VITE_* vars in at build time — if this is missing, every
+  // request below silently resolves relative to the frontend's own origin
+  // instead of the API, which shows up as confusing 404s with no obvious
+  // cause. Fail loud here instead.
+  console.error(
+    "VITE_API_URL is not set — API requests will resolve against the wrong origin. Check your build environment."
+  );
+}
+
 const api = axios.create({
   baseURL,
   headers: {
