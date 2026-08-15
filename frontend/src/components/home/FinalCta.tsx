@@ -22,7 +22,7 @@ export function FinalCta() {
 
           <div className="relative">
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-purple-200/80">
-              MUSA HackX 2026
+              MUSA CodeX 2026
             </p>
             <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-black leading-tight tracking-tight text-white sm:text-5xl">
               Your idea could win.{" "}

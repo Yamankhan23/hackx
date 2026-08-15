@@ -15,7 +15,7 @@ export function Sponsors() {
               Powered by <span className="text-gradient">great partners</span>
             </>
           }
-          subtitle="Brands and organisations that make MUSA HackX possible."
+          subtitle="Brands and organisations that make MUSA CodeX possible."
         />
 
         <div

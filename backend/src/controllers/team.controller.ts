@@ -7,12 +7,13 @@ import {
 } from "../validators/team.validator";
 import {
   registerTeam,
+  resendVerificationEmail,
   resumeApplication,
   sendResumeLink,
-  sendTeamVerificationEmails,
   updateTeam,
-  verifyEmail
+  verifyEmail,
 } from "../services/team.service";
+import { friendlyDbErrorMessage } from "../lib/db-errors";
 
 export const registerTeamController = async (
   req: Request,
@@ -41,46 +42,14 @@ export const registerTeamController = async (
     console.error("Team registration error:", error);
 
     const message =
-      error instanceof Error
+      friendlyDbErrorMessage(error) ??
+      (error instanceof Error
         ? error.message
-        : "Failed to create team registration";
+        : "Failed to create team registration");
 
     return res.status(400).json({
       success: false,
       message,
-    });
-  }
-};
-
-export const sendVerificationEmailsController = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const { teamId } = req.params;
-
-    if (typeof teamId !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid team ID",
-      });
-    }
-
-    const result = await sendTeamVerificationEmails(teamId);
-
-    return res.status(200).json({
-      success: true,
-      ...result,
-    });
-  } catch (error) {
-    console.error("Send verification error:", error);
-
-    return res.status(400).json({
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to send verification emails",
     });
   }
 };
@@ -104,7 +73,10 @@ export const verifyEmailController = async (
 
     return res.status(200).json({
       success: true,
-      message: "Email verified successfully",
+      code: result.alreadyVerified ? "ALREADY_VERIFIED" : undefined,
+      message: result.alreadyVerified
+        ? "This email address has already been verified."
+        : "Email verified successfully",
       data: result,
     });
   } catch (error) {
@@ -117,17 +89,10 @@ export const verifyEmailController = async (
         });
       }
       if (error.message === "INVALID_TOKEN") {
-        return res.status(400).json({
+        return res.status(404).json({
           success: false,
           code: "INVALID_TOKEN",
           message: "This verification link is invalid.",
-        });
-      }
-      if (error.message === "ALREADY_VERIFIED") {
-        return res.status(200).json({
-          success: true,
-          code: "ALREADY_VERIFIED",
-          message: "This email address has already been verified.",
         });
       }
     }
@@ -137,6 +102,36 @@ export const verifyEmailController = async (
       success: false,
       code: "SERVER_ERROR",
       message: "Failed to verify email. Please try again.",
+    });
+  }
+};
+
+export const resendVerificationEmailController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { email } = continueApplicationSchema.parse(req.body);
+    const result = await resendVerificationEmail(email);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email",
+        errors: error.issues,
+      });
+    }
+
+    console.error("Resend verification error:", error);
+
+    return res.status(400).json({
+      success: false,
+      message: "Failed to resend verification email",
     });
   }
 };
@@ -198,7 +193,7 @@ export const resumeApplicationController = async (
   } catch (error) {
     console.error("Resume application error:", error);
 
-    return res.status(400).json({
+    return res.status(404).json({
       success: false,
       message:
         error instanceof Error
@@ -213,18 +208,18 @@ export const updateTeamController = async (
   res: Response
 ) => {
   try {
-    const { teamId } = req.params;
+    const { token } = req.params;
 
-    if (typeof teamId !== "string") {
+    if (typeof token !== "string" || !token) {
       return res.status(400).json({
         success: false,
-        message: "Invalid team ID",
+        message: "Invalid resume token",
       });
     }
 
     const validatedData = updateTeamSchema.parse(req.body);
 
-    const result = await updateTeam(teamId, validatedData);
+    const result = await updateTeam(token, validatedData);
 
     return res.status(200).json({
       success: true,
@@ -241,6 +236,33 @@ export const updateTeamController = async (
     }
 
     console.error("Update team error:", error);
+
+    const friendlyMessage = friendlyDbErrorMessage(error);
+
+    if (friendlyMessage) {
+      return res.status(400).json({ success: false, message: friendlyMessage });
+    }
+
+    if (error instanceof Error) {
+      if (error.message === "INVALID_TOKEN") {
+        return res.status(404).json({
+          success: false,
+          message: "This link is invalid.",
+        });
+      }
+      if (error.message === "TOKEN_EXPIRED") {
+        return res.status(410).json({
+          success: false,
+          message: "This link has expired. Please request a new one.",
+        });
+      }
+      if (error.message === "Team not found") {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      if (error.message.includes("already been submitted")) {
+        return res.status(409).json({ success: false, message: error.message });
+      }
+    }
 
     return res.status(400).json({
       success: false,

@@ -50,14 +50,23 @@ export async function resumeApplication(token: string) {
 }
 
 export async function updateTeam(
-  teamId: string,
+  resumeToken: string,
   payload: RegisterTeamPayload
 ) {
   const response = await api.put<{
     success: boolean;
     message: string;
     data: RegisterTeamResponse;
-  }>(`/teams/${teamId}`, payload);
+  }>(`/teams/resume/${resumeToken}`, payload);
+
+  return response.data;
+}
+
+export async function resendVerificationEmail(email: string) {
+  const response = await api.post<{
+    success: boolean;
+    message: string;
+  }>("/teams/resend-verification", { email });
 
   return response.data;
 }

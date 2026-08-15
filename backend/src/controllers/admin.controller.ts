@@ -31,6 +31,7 @@ import {
   updateDomainSchema,
   updateProblemStatementSchema,
   updateRoundSchema,
+  updateTeamStatusSchema,
 } from "../validators/admin.validator";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -40,14 +41,6 @@ const pagination = (req: Request) => {
   const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 100);
   const offset = (page - 1) * limit;
   return { page, limit, offset };
-};
-
-const like = (value?: string): SQL | undefined =>
-  value ? ilike(sql`${sql.raw("COALESCE")}(${sql.placeholder("x")}, '')`, `%${value}%`) : undefined;
-
-const safeInt = (value: unknown, fallback = 0) => {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
 };
 
 export const adminLogin = async (req: Request, res: Response): Promise<void> => {
@@ -274,6 +267,35 @@ export const getTeamById = async (req: Request, res: Response): Promise<void> =>
   } catch (error) {
     console.error("Get team error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch team" });
+  }
+};
+
+// Manual override so admins can confirm/cancel a team regardless of the
+// payment gateway state (disputes, no-shows, gateway issues).
+export const updateTeamStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const validation = updateTeamStatusSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+
+    const id = Number(req.params.id);
+    const [updated] = await db
+      .update(teams)
+      .set({ status: validation.data.status })
+      .where(eq(teams.id, id))
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Team not found" });
+      return;
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Update team status error:", error);
+    res.status(500).json({ success: false, message: "Failed to update team status" });
   }
 };
 

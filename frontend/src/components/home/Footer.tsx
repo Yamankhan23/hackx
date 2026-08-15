@@ -57,7 +57,7 @@ export function Footer() {
               />
               <span className="flex flex-col leading-none">
                 <span className="text-sm font-bold tracking-tight text-white">
-                  MUSA HackX
+                  MUSA CodeX
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-purple-200/70">
                   2026
@@ -134,7 +134,7 @@ export function Footer() {
 
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 sm:flex-row">
           <p className="text-xs text-slate-500">
-            © {new Date().getFullYear()} MUSA HackX. All rights reserved.
+            © {new Date().getFullYear()} MUSA CodeX. All rights reserved.
           </p>
           <p className="text-xs text-slate-600">
             Build. Innovate. Impact.

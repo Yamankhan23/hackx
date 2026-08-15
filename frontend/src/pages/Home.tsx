@@ -68,7 +68,7 @@ export default function Home() {
         <Faq />
 
         {/* Continue your application */}
-        <section className="px-4 py-16 sm:px-6">
+        <section id="continue" className="px-4 py-16 sm:px-6">
           <div className="mx-auto w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950/70 p-5 text-left">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-purple-200/80">
               Already started?

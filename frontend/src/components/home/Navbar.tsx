@@ -8,6 +8,7 @@ const links = [
   { label: "Timeline", href: "#timeline" },
   { label: "Prizes", href: "#prizes" },
   { label: "FAQ", href: "#faq" },
+  { label: "Continue Application", href: "#continue" },
 ];
 
 export function Navbar() {
@@ -47,7 +48,7 @@ export function Navbar() {
           />
           <span className="flex flex-col leading-none">
             <span className="text-sm font-bold tracking-tight text-white">
-              MUSA HackX
+              MUSA CodeX
             </span>
             <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-purple-200/70">
               2026

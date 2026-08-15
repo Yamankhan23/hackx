@@ -14,6 +14,10 @@ const collegeSchema = z
   );
 
 const teamMemberSchema = z.object({
+  // Present when editing an existing draft member; used to match against
+  // the stored row by id rather than by email (email itself may be changing).
+  id: z.number().int().positive().optional(),
+
   role: z.enum(["LEADER", "MEMBER"]),
 
   fullName: z.string().trim().min(2).max(150),

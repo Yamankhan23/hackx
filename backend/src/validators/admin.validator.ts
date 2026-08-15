@@ -62,6 +62,10 @@ export const createProblemStatementSchema = z.object({
   isPublished: z.boolean().optional().default(false),
 });
 
+export const updateTeamStatusSchema = z.object({
+  status: z.enum(["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CANCELLED"]),
+});
+
 export const updateProblemStatementSchema = z.object({
   title: z.string().trim().min(1).max(255).optional(),
   description: z.string().trim().min(1).optional(),

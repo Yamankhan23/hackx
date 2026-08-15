@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../db";
 import {
   colleges,
@@ -14,13 +14,13 @@ import {
   generateVerificationToken,
   hashVerificationToken,
 } from "../lib/verification-token";
+import { REGISTRATION_FEE_RUPEES, VERIFICATION_EXPIRY_HOURS } from "../lib/constants";
 
 import {
   sendApplicationResumeEmail,
+  sendPaymentLinkEmail,
   sendVerificationEmail,
 } from "./email.service";
-
-const VERIFICATION_EXPIRY_HOURS = 24;
 
 // Shared helper: resolve an existing college or upsert a new one for each member.
 const resolveColleges = async (
@@ -54,51 +54,49 @@ const resolveColleges = async (
     } else if (college.collegeName) {
       const normalizedCollegeName = college.collegeName.trim();
 
-      const [existingCollege] = await tx
-        .select({
-          id: colleges.id,
+      // Atomic upsert: avoids the race where two concurrent registrations
+      // for the same brand-new college both pass a "not found" check and
+      // then both try to insert, tripping the unique constraint on name.
+      const [insertedCollege] = await tx
+        .insert(colleges)
+        .values({
+          // Short temporary ID because colleges.college_id is VARCHAR(20)
+          collegeId: `T-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          name: normalizedCollegeName,
+          region: member.region,
         })
-        .from(colleges)
-        .where(eq(colleges.name, normalizedCollegeName))
-        .limit(1);
+        .onConflictDoNothing({ target: colleges.name })
+        .returning({ id: colleges.id });
 
-      if (existingCollege) {
-        resolvedCollegeIds.set(
-          member.email,
-          Number(existingCollege.id)
-        );
-      } else {
-        // Short temporary ID because colleges.college_id is VARCHAR(20)
-        const temporaryCollegeId = `T-${Date.now()}`;
+      let collegeRowId: number;
 
-        const [newCollege] = await tx
-          .insert(colleges)
-          .values({
-            collegeId: temporaryCollegeId,
-            name: normalizedCollegeName,
-            region: member.region,
-          })
-          .returning({
-            id: colleges.id,
-          });
+      if (insertedCollege) {
+        collegeRowId = Number(insertedCollege.id);
 
         // Generate final readable ID from database-generated ID
-        const readableCollegeId = `COL-${String(
-          newCollege.id
-        ).padStart(3, "0")}`;
+        const readableCollegeId = `COL-${String(collegeRowId).padStart(3, "0")}`;
 
         await tx
           .update(colleges)
-          .set({
-            collegeId: readableCollegeId,
-          })
-          .where(eq(colleges.id, newCollege.id));
+          .set({ collegeId: readableCollegeId })
+          .where(eq(colleges.id, collegeRowId));
+      } else {
+        const [existingCollege] = await tx
+          .select({ id: colleges.id })
+          .from(colleges)
+          .where(eq(colleges.name, normalizedCollegeName))
+          .limit(1);
 
-        resolvedCollegeIds.set(
-          member.email,
-          Number(newCollege.id)
-        );
+        if (!existingCollege) {
+          throw new Error(
+            `Failed to resolve college "${normalizedCollegeName}"`
+          );
+        }
+
+        collegeRowId = Number(existingCollege.id);
       }
+
+      resolvedCollegeIds.set(member.email, collegeRowId);
     }
   }
 
@@ -110,7 +108,7 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     member.email.toLowerCase()
   );
 
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // ---------------------------------------------------------
     // 1. Validate domain
     // ---------------------------------------------------------
@@ -231,6 +229,20 @@ export const registerTeam = async (input: RegisterTeamInput) => {
       })),
     };
   });
+
+  // Send verification emails only after the transaction has committed —
+  // an email-provider hiccup must not roll back an otherwise-successful
+  // registration.
+  try {
+    await sendTeamVerificationEmails(result.teamId);
+  } catch (error) {
+    console.error(
+      "Failed to send verification emails after registration:",
+      error
+    );
+  }
+
+  return result;
 };
 
 export const verifyEmail = async (token: string) => {
@@ -241,6 +253,8 @@ export const verifyEmail = async (token: string) => {
       id: teamMembers.id,
       email: teamMembers.email,
       fullName: teamMembers.fullName,
+      role: teamMembers.role,
+      teamId: teamMembers.teamId,
       emailVerifiedAt: teamMembers.emailVerifiedAt,
       emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
     })
@@ -253,7 +267,23 @@ export const verifyEmail = async (token: string) => {
   }
 
   if (member.emailVerifiedAt) {
-    throw new Error("ALREADY_VERIFIED");
+    // Idempotent repeat hit — most commonly an email client's link-safety
+    // scanner (Gmail/Outlook/etc. pre-fetch links before the user clicks)
+    // already consumed this token. Since we no longer clear the token hash
+    // on success (see below), this branch resolves such repeats as success
+    // instead of a confusing INVALID_TOKEN error on the user's real click.
+    const membersOfTeam = await db
+      .select({ emailVerifiedAt: teamMembers.emailVerifiedAt })
+      .from(teamMembers)
+      .where(eq(teamMembers.teamId, member.teamId));
+
+    return {
+      email: member.email,
+      name: member.fullName,
+      isLeader: member.role === "LEADER",
+      allVerified: membersOfTeam.every((m) => m.emailVerifiedAt !== null),
+      alreadyVerified: true,
+    };
   }
 
   if (
@@ -263,18 +293,98 @@ export const verifyEmail = async (token: string) => {
     throw new Error("TOKEN_EXPIRED");
   }
 
+  // Intentionally NOT clearing emailVerificationTokenHash/ExpiresAt here —
+  // leaving the token valid (until its normal 24h expiry) means a duplicate
+  // hit on the same token is handled by the emailVerifiedAt branch above
+  // instead of erroring.
   await db
     .update(teamMembers)
-    .set({
-      emailVerifiedAt: new Date().toISOString(),
-      emailVerificationTokenHash: null,
-      emailVerificationExpiresAt: null,
-    })
+    .set({ emailVerifiedAt: new Date().toISOString() })
     .where(eq(teamMembers.id, member.id));
+
+  const stillUnverified = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.teamId, member.teamId),
+        isNull(teamMembers.emailVerifiedAt)
+      )
+    );
+
+  const allVerified = stillUnverified.length === 0;
+  const isLeader = member.role === "LEADER";
+  let paymentToken: string | undefined;
+
+  if (allVerified) {
+    // Guarded by `status = 'DRAFT'` so only one concurrent request (the
+    // one that verifies the last member) performs the transition and the
+    // one-time payment-link dispatch.
+    const [transitioned] = await db
+      .update(teams)
+      .set({ status: "PENDING_PAYMENT" })
+      .where(
+        and(eq(teams.id, member.teamId), eq(teams.status, "DRAFT"))
+      )
+      .returning({ id: teams.id, teamName: teams.teamName });
+
+    if (transitioned) {
+      const [leader] = await db
+        .select({
+          id: teamMembers.id,
+          email: teamMembers.email,
+          fullName: teamMembers.fullName,
+        })
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.teamId, member.teamId),
+            eq(teamMembers.role, "LEADER")
+          )
+        )
+        .limit(1);
+
+      if (leader) {
+        const leaderToken = generateVerificationToken();
+        const leaderTokenHash = hashVerificationToken(leaderToken);
+        const expiresAt = new Date(
+          Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+        ).toISOString();
+
+        await db
+          .update(teamMembers)
+          .set({
+            emailVerificationTokenHash: leaderTokenHash,
+            emailVerificationExpiresAt: expiresAt,
+          })
+          .where(eq(teamMembers.id, leader.id));
+
+        if (leader.id === member.id) {
+          paymentToken = leaderToken;
+        } else {
+          try {
+            await sendPaymentLinkEmail({
+              email: leader.email,
+              name: leader.fullName,
+              teamName: transitioned.teamName,
+              amount: REGISTRATION_FEE_RUPEES,
+              paymentToken: leaderToken,
+            });
+          } catch (error) {
+            console.error("Failed to send payment link email:", error);
+          }
+        }
+      }
+    }
+  }
 
   return {
     email: member.email,
     name: member.fullName,
+    isLeader,
+    allVerified,
+    alreadyVerified: false,
+    ...(paymentToken ? { paymentToken } : {}),
   };
 };
 
@@ -304,6 +414,17 @@ export const sendTeamVerificationEmails = async (
       continue;
     }
 
+    // Don't re-send if the member already has a live, unexpired token —
+    // avoids re-emailing everyone on every draft save.
+    const hasActiveToken =
+      member.emailVerificationTokenHash &&
+      member.emailVerificationExpiresAt &&
+      new Date(member.emailVerificationExpiresAt).getTime() > Date.now();
+
+    if (hasActiveToken) {
+      continue;
+    }
+
     const token = generateVerificationToken();
     const tokenHash = hashVerificationToken(token);
 
@@ -319,11 +440,20 @@ export const sendTeamVerificationEmails = async (
       })
       .where(eq(teamMembers.id, member.id));
 
-    await sendVerificationEmail({
-      email: member.email,
-      name: member.fullName,
-      verificationToken: token,
-    });
+    try {
+      await sendVerificationEmail({
+        email: member.email,
+        name: member.fullName,
+        verificationToken: token,
+      });
+    } catch (error) {
+      // One bad address shouldn't block verification emails to the rest
+      // of the team.
+      console.error(
+        `Failed to send verification email to ${member.email}:`,
+        error
+      );
+    }
   }
 
   return {
@@ -332,14 +462,70 @@ export const sendTeamVerificationEmails = async (
   };
 };
 
+// Public, enumeration-safe resend: looks up by the member's own email
+// (any role, not just the leader) rather than a guessable team ID.
+export const resendVerificationEmail = async (email: string) => {
+  const genericResult = {
+    message:
+      "If this email belongs to an unverified team member, a verification link has been sent.",
+  };
+
+  const normalizedEmail = email.toLowerCase();
+
+  const [member] = await db
+    .select({
+      id: teamMembers.id,
+      email: teamMembers.email,
+      fullName: teamMembers.fullName,
+      emailVerifiedAt: teamMembers.emailVerifiedAt,
+    })
+    .from(teamMembers)
+    .where(eq(teamMembers.email, normalizedEmail))
+    .limit(1);
+
+  if (!member || member.emailVerifiedAt) {
+    return genericResult;
+  }
+
+  const token = generateVerificationToken();
+  const tokenHash = hashVerificationToken(token);
+  const expiresAt = new Date(
+    Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+  ).toISOString();
+
+  await db
+    .update(teamMembers)
+    .set({
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationExpiresAt: expiresAt,
+    })
+    .where(eq(teamMembers.id, member.id));
+
+  try {
+    await sendVerificationEmail({
+      email: member.email,
+      name: member.fullName,
+      verificationToken: token,
+    });
+  } catch (error) {
+    console.error("Failed to resend verification email:", error);
+  }
+
+  return genericResult;
+};
+
 // ---------------------------------------------------------
-// Continue your application (resume draft)
+// Continue your application (resume draft / pay)
 // ---------------------------------------------------------
 
 export const sendResumeLink = async (leaderEmail: string) => {
   const normalizedEmail = leaderEmail.toLowerCase();
+  const genericResult = {
+    message:
+      "If this email has a pending application, a link has been sent.",
+  };
 
-  // Find the leader of a DRAFT team by email
+  // Find the leader of a team by email
   const [leader] = await db
     .select({
       id: teamMembers.id,
@@ -358,9 +544,7 @@ export const sendResumeLink = async (leaderEmail: string) => {
 
   // Always respond generically (do not reveal whether the email exists)
   if (!leader) {
-    return {
-      message: "If this email has a draft application, a resume link has been sent.",
-    };
+    return genericResult;
   }
 
   const [team] = await db
@@ -374,10 +558,10 @@ export const sendResumeLink = async (leaderEmail: string) => {
     .where(eq(teams.id, leader.teamId))
     .limit(1);
 
-  if (!team || team.status !== "DRAFT") {
-    return {
-      message: "If this email has a draft application, a resume link has been sent.",
-    };
+  // Leaders can always get back to a draft (to keep editing) or a
+  // pending-payment team (to pay). Anything else has no further action.
+  if (!team || (team.status !== "DRAFT" && team.status !== "PENDING_PAYMENT")) {
+    return genericResult;
   }
 
   // Store a fresh verification token on the leader row so it can be validated later
@@ -402,9 +586,7 @@ export const sendResumeLink = async (leaderEmail: string) => {
     resumeToken: token,
   });
 
-  return {
-    message: "If this email has a draft application, a resume link has been sent.",
-  };
+  return genericResult;
 };
 
 export const resumeApplication = async (resumeToken: string) => {
@@ -421,7 +603,12 @@ export const resumeApplication = async (resumeToken: string) => {
       teamId: teamMembers.teamId,
     })
     .from(teamMembers)
-    .where(eq(teamMembers.emailVerificationTokenHash, tokenHash))
+    .where(
+      and(
+        eq(teamMembers.emailVerificationTokenHash, tokenHash),
+        eq(teamMembers.role, "LEADER")
+      )
+    )
     .limit(1);
 
   if (!leader) {
@@ -464,15 +651,43 @@ export const resumeApplication = async (resumeToken: string) => {
       .where(eq(teamMembers.id, leader.id));
   }
 
-  // If the team has already been submitted, just notify the leader.
+  // If the team is no longer a draft, branch by status instead of a single
+  // generic "already submitted" message.
   if (team.status !== "DRAFT") {
+    if (team.status === "PENDING_PAYMENT") {
+      return {
+        alreadySubmitted: true,
+        status: team.status,
+        message: "Please complete payment to confirm your team's registration.",
+        team: {
+          teamId: team.teamId,
+          registrationId: team.registrationId,
+          teamName: team.teamName,
+          status: team.status,
+        },
+        payment: { amountRupees: REGISTRATION_FEE_RUPEES },
+      };
+    }
+
+    if (team.status === "CANCELLED") {
+      return {
+        alreadySubmitted: true,
+        status: team.status,
+        message:
+          "This registration has been cancelled. Contact the organizers if you believe this is a mistake.",
+        team: {
+          teamId: team.teamId,
+          registrationId: team.registrationId,
+          teamName: team.teamName,
+          status: team.status,
+        },
+      };
+    }
+
     return {
       alreadySubmitted: true,
       status: team.status,
-      message:
-        team.status === "CONFIRMED"
-          ? "Your details are already recorded. Contact admin for any query."
-          : "Your application has already been submitted.",
+      message: "Your details are already recorded. Contact admin for any query.",
       team: {
         teamId: team.teamId,
         registrationId: team.registrationId,
@@ -562,9 +777,37 @@ export const resumeApplication = async (resumeToken: string) => {
 };
 
 export const updateTeam = async (
-  teamId: string,
+  resumeToken: string,
   input: UpdateTeamInput
 ) => {
+  const tokenHash = hashVerificationToken(resumeToken);
+
+  const [leader] = await db
+    .select({
+      id: teamMembers.id,
+      teamId: teamMembers.teamId,
+      emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
+    })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.emailVerificationTokenHash, tokenHash),
+        eq(teamMembers.role, "LEADER")
+      )
+    )
+    .limit(1);
+
+  if (!leader) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (
+    leader.emailVerificationExpiresAt &&
+    new Date(leader.emailVerificationExpiresAt).getTime() < Date.now()
+  ) {
+    throw new Error("TOKEN_EXPIRED");
+  }
+
   const [team] = await db
     .select({
       id: teams.id,
@@ -572,7 +815,7 @@ export const updateTeam = async (
       status: teams.status,
     })
     .from(teams)
-    .where(eq(teams.teamId, teamId))
+    .where(eq(teams.id, leader.teamId))
     .limit(1);
 
   if (!team) {
@@ -585,7 +828,7 @@ export const updateTeam = async (
     );
   }
 
-  return await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const [domain] = await tx
       .select({ id: domains.id })
       .from(domains)
@@ -611,32 +854,34 @@ export const updateTeam = async (
       })
       .where(eq(teams.id, team.id));
 
-    // Load existing members so we can preserve verification data
+    // Load existing members so we can match by id (stable across email
+    // edits) rather than by email (breaks if a member — especially the
+    // leader whose row the resume token points at — changes their own
+    // email, and mishandles two members swapping emails).
     const existingMembers = await tx
       .select({
         id: teamMembers.id,
         email: teamMembers.email,
-        emailVerifiedAt: teamMembers.emailVerifiedAt,
-        emailVerificationTokenHash: teamMembers.emailVerificationTokenHash,
-        emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
       })
       .from(teamMembers)
       .where(eq(teamMembers.teamId, team.id));
 
-    const existingByEmail = new Map(
-      existingMembers.map((member) => [member.email, member])
+    const existingById = new Map(
+      existingMembers.map((member) => [member.id, member])
     );
 
-    const incomingEmails = input.members.map((member) =>
-      member.email.toLowerCase()
+    const incomingIds = new Set(
+      input.members
+        .map((member) => member.id)
+        .filter((id): id is number => typeof id === "number")
     );
 
     // Remove members that were deleted from the form
-    const emailsToRemove = existingMembers.filter(
-      (member) => !incomingEmails.includes(member.email)
+    const membersToRemove = existingMembers.filter(
+      (member) => !incomingIds.has(member.id)
     );
 
-    for (const member of emailsToRemove) {
+    for (const member of membersToRemove) {
       await tx
         .delete(teamMembers)
         .where(eq(teamMembers.id, member.id));
@@ -644,19 +889,33 @@ export const updateTeam = async (
 
     for (const member of input.members) {
       const normalizedEmail = member.email.toLowerCase();
-      const existing = existingByEmail.get(normalizedEmail);
+      const existing =
+        typeof member.id === "number"
+          ? existingById.get(member.id)
+          : undefined;
 
       if (existing) {
+        const emailChanged = existing.email !== normalizedEmail;
+
         await tx
           .update(teamMembers)
           .set({
             role: member.role,
             fullName: member.fullName.trim(),
+            email: normalizedEmail,
             mobileNumber: member.mobileNumber.trim(),
             collegeId: resolvedCollegeIds.get(normalizedEmail)!,
             region: member.region.trim(),
             branch: member.branch.trim(),
             yearOfStudy: member.yearOfStudy,
+            // Changing your email means re-verifying it.
+            ...(emailChanged
+              ? {
+                  emailVerifiedAt: null,
+                  emailVerificationTokenHash: null,
+                  emailVerificationExpiresAt: null,
+                }
+              : {}),
           })
           .where(eq(teamMembers.id, existing.id));
       } else {
@@ -673,25 +932,36 @@ export const updateTeam = async (
         });
       }
     }
-
-    const updatedMembers = await tx
-      .select({
-        name: teamMembers.fullName,
-        email: teamMembers.email,
-        emailVerified: teamMembers.emailVerifiedAt,
-      })
-      .from(teamMembers)
-      .where(eq(teamMembers.teamId, team.id));
-
-    return {
-      teamId: team.teamId,
-      teamName: input.teamName.trim(),
-      status: "DRAFT",
-      members: updatedMembers.map((member) => ({
-        name: member.name,
-        email: member.email,
-        emailVerified: Boolean(member.emailVerified),
-      })),
-    };
   });
+
+  // Re-send verification to any member left unverified without an active
+  // token (newly added members, or members whose email just changed).
+  try {
+    await sendTeamVerificationEmails(team.teamId);
+  } catch (error) {
+    console.error(
+      "Failed to send verification emails after draft update:",
+      error
+    );
+  }
+
+  const updatedMembers = await db
+    .select({
+      name: teamMembers.fullName,
+      email: teamMembers.email,
+      emailVerified: teamMembers.emailVerifiedAt,
+    })
+    .from(teamMembers)
+    .where(eq(teamMembers.teamId, team.id));
+
+  return {
+    teamId: team.teamId,
+    teamName: input.teamName.trim(),
+    status: "DRAFT",
+    members: updatedMembers.map((member) => ({
+      name: member.name,
+      email: member.email,
+      emailVerified: Boolean(member.emailVerified),
+    })),
+  };
 };

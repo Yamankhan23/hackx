@@ -29,7 +29,7 @@ export function About() {
     <section id="about" className="relative scroll-mt-20 py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 <SectionHeading
-          eyebrow="About MUSA HackX"
+          eyebrow="About MUSA CodeX"
           title={
             <>
               A hackathon engineered for{" "}
@@ -54,7 +54,7 @@ export function About() {
           )}
         >
           <p className="text-base leading-relaxed text-slate-300 sm:text-lg">
-            MUSA HackX is a <span className="font-semibold text-white">Mumbai college-level hackathon</span>{" "}
+            MUSA CodeX is a <span className="font-semibold text-white">Mumbai college-level hackathon</span>{" "}
             designed to bring the region&apos;s brightest engineering students together.
             Participants tackle real-world challenges across focused domains, turning
             ideas into working prototypes in a high-energy, competitive environment.

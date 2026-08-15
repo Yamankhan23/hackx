@@ -5,8 +5,8 @@ import { cn } from "../../lib/utils";
 
 const faqs = [
   {
-    q: "What is MUSA HackX 2026?",
-    a: "MUSA HackX is a Mumbai college-level hackathon where engineering students build solutions to real-world problems across ten domains. It features two online rounds followed by an offline Grand Finale in Mumbai.",
+    q: "What is MUSA CodeX 2026?",
+    a: "MUSA CodeX is a Mumbai college-level hackathon where engineering students build solutions to real-world problems across ten domains. It features two online rounds followed by an offline Grand Finale in Mumbai.",
   },
   {
     q: "Who can participate?",

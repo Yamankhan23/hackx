@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
+import { adminService } from "../../services/admin.service";
+import { useAdminGuard } from "../../hooks/useAdminGuard";
 import AdminShell from "./AdminShell";
 
 type DashboardData = {
@@ -30,23 +30,24 @@ type DashboardData = {
 const cardStyles = "rounded-[24px] border border-white/10 bg-white/5 p-5 shadow-[0_20px_60px_rgba(8,15,35,0.25)]";
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
+  useAdminGuard();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!localStorage.getItem("admin_token")) {
-      navigate("/admin/login");
-      return;
-    }
-
     let active = true;
-    api
-      .get("/api/admin/dashboard")
-      .then((res) => {
-        if (active) setData(res.data.data);
+    adminService
+      .getDashboard()
+      .then((result) => {
+        if (active) setData(result as unknown as DashboardData);
       })
-      .catch(() => navigate("/admin/login"))
+      .catch(() => {
+        // A 401 is already handled globally (see the axios interceptor in
+        // services/api.ts), which redirects to login. Anything else is a
+        // genuine failure worth surfacing.
+        if (active) setError("Failed to load dashboard data.");
+      })
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -54,7 +55,7 @@ export default function AdminDashboard() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, []);
 
   const summaryCards = useMemo(
     () => [
@@ -82,6 +83,10 @@ export default function AdminDashboard() {
               <div className="mt-6 h-2 w-full rounded-full bg-white/10" />
             </div>
           ))}
+        </div>
+      ) : error ? (
+        <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-6 text-sm text-red-100">
+          {error}
         </div>
       ) : (
         <div className="grid gap-5">

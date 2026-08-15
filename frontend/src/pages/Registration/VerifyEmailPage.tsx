@@ -2,30 +2,32 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 
-type Status = "loading" | "success" | "expired" | "already_verified" | "invalid" | "error";
+type Status = "loading" | "success" | "expired" | "invalid" | "error";
 
 export function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState<Status>("loading");
+  const token = searchParams.get("token");
+  const [status, setStatus] = useState<Status>(token ? "loading" : "invalid");
   const [name, setName] = useState("");
+  const [allVerified, setAllVerified] = useState(false);
+  const [isLeader, setIsLeader] = useState(false);
+  const [alreadyVerified, setAlreadyVerified] = useState(false);
+  const [paymentToken, setPaymentToken] = useState<string | undefined>();
 
   useEffect(() => {
-    const token = searchParams.get("token");
-
     if (!token) {
-      setStatus("invalid");
       return;
     }
 
     api
       .get(`/teams/verify-email?token=${encodeURIComponent(token)}`)
       .then((res) => {
-        if (res.data.code === "ALREADY_VERIFIED") {
-          setStatus("already_verified");
-        } else {
-          setName(res.data.data?.name ?? "");
-          setStatus("success");
-        }
+        setName(res.data.data?.name ?? "");
+        setAllVerified(Boolean(res.data.data?.allVerified));
+        setIsLeader(Boolean(res.data.data?.isLeader));
+        setAlreadyVerified(Boolean(res.data.data?.alreadyVerified));
+        setPaymentToken(res.data.data?.paymentToken);
+        setStatus("success");
       })
       .catch((err) => {
         const code = err.response?.data?.code as string | undefined;
@@ -37,15 +39,22 @@ export function VerifyEmailPage() {
           setStatus("error");
         }
       });
-  }, [searchParams]);
+  }, [token]);
 
   return (
     <div className="min-h-screen bg-[#050816] px-4 py-6 text-white">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-lg items-center justify-center">
         <div className="w-full rounded-[28px] border border-purple-500/25 bg-slate-950/85 p-6 shadow-[0_20px_80px_rgba(8,15,35,0.75)]">
           {status === "loading" && <LoadingState />}
-          {status === "success" && <SuccessState name={name} />}
-          {status === "already_verified" && <AlreadyVerifiedState />}
+          {status === "success" && (
+            <SuccessState
+              name={name}
+              allVerified={allVerified}
+              isLeader={isLeader}
+              alreadyVerified={alreadyVerified}
+              paymentToken={paymentToken}
+            />
+          )}
           {status === "expired" && <ExpiredState />}
           {status === "invalid" && <InvalidState />}
           {status === "error" && <ErrorState />}
@@ -64,41 +73,72 @@ function LoadingState() {
   );
 }
 
-function SuccessState({ name }: { name: string }) {
+function SuccessState({
+  name,
+  allVerified,
+  isLeader,
+  alreadyVerified,
+  paymentToken,
+}: {
+  name: string;
+  allVerified: boolean;
+  isLeader: boolean;
+  alreadyVerified: boolean;
+  paymentToken?: string;
+}) {
   return (
     <>
-      <p className="text-xs uppercase tracking-[0.35em] text-purple-200/80">Email Verified</p>
+      <p className="text-xs uppercase tracking-[0.35em] text-purple-200/80">
+        {alreadyVerified ? "Already Verified" : "Email Verified"}
+      </p>
       <h1 className="mt-2 text-3xl font-semibold">
-        {name ? `Welcome, ${name}!` : "Email verified!"}
+        {alreadyVerified
+          ? "Email already verified"
+          : name
+            ? `Welcome, ${name}!`
+            : "Email verified!"}
       </h1>
-      <p className="mt-3 text-sm leading-6 text-slate-300">
-        Your email address has been successfully verified. Once all team members have verified
-        their emails, your team can proceed to payment.
-      </p>
-      <Link
-        to="/"
-        className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
-      >
-        Back to home
-      </Link>
-    </>
-  );
-}
 
-function AlreadyVerifiedState() {
-  return (
-    <>
-      <p className="text-xs uppercase tracking-[0.35em] text-purple-200/80">Already Verified</p>
-      <h1 className="mt-2 text-3xl font-semibold">Email already verified</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-300">
-        This email address has already been verified. No further action is needed.
-      </p>
-      <Link
-        to="/"
-        className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
-      >
-        Back to home
-      </Link>
+      {allVerified && isLeader && paymentToken ? (
+        <>
+          <p className="mt-3 text-sm leading-6 text-slate-300">
+            Every team member has verified their email. You're ready to complete payment and
+            confirm your team's spot.
+          </p>
+          <Link
+            to={`/resume?token=${encodeURIComponent(paymentToken)}`}
+            className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
+          >
+            Proceed to Payment
+          </Link>
+        </>
+      ) : allVerified ? (
+        <>
+          <p className="mt-3 text-sm leading-6 text-slate-300">
+            Your email address has been verified. Your whole team is now verified — the team
+            leader will receive a payment link shortly to confirm your spot.
+          </p>
+          <Link
+            to="/"
+            className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
+          >
+            Back to home
+          </Link>
+        </>
+      ) : (
+        <>
+          <p className="mt-3 text-sm leading-6 text-slate-300">
+            Your email address has been verified. Once all team members have verified their
+            emails, your team can proceed to payment.
+          </p>
+          <Link
+            to="/"
+            className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
+          >
+            Back to home
+          </Link>
+        </>
+      )}
     </>
   );
 }

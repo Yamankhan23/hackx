@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 const memberSchema = z.object({
+  // Present when editing an existing draft member (loaded via resume);
+  // absent for newly added members. Lets the backend match by id instead
+  // of by email, which stays correct even if the member edits their email.
+  id: z.number().optional(),
   role: z.enum(["LEADER", "MEMBER"]),
   fullName: z.string().trim().min(2, "Full name is required").max(150),
   email: z

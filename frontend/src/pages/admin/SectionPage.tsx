@@ -1,7 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useSearchParams } from "react-router-dom";
-import api from "../../services/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  adminService,
+  getApiErrorMessage,
+  type College,
+  type Domain,
+  type ProblemStatement,
+  type Round,
+  type TeamStatus,
+} from "../../services/admin.service";
+import { useAdminGuard } from "../../hooks/useAdminGuard";
+import { useToast } from "../../hooks/useToast";
+import { Modal } from "../../components/admin/Modal";
+import { DomainForm } from "../../components/admin/DomainForm";
+import { CollegeForm } from "../../components/admin/CollegeForm";
+import { RoundForm } from "../../components/admin/RoundForm";
+import { ProblemStatementForm } from "../../components/admin/ProblemStatementForm";
 import AdminShell from "./AdminShell";
 
 type SectionKey =
@@ -15,6 +29,9 @@ type SectionKey =
 
 type Row = Record<string, unknown>;
 
+const CRUD_SECTIONS: SectionKey[] = ["domains", "colleges", "rounds", "problem-statements"];
+const TEAM_STATUSES: TeamStatus[] = ["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CANCELLED"];
+
 const labels: Record<SectionKey, string> = {
   teams: "Teams",
   participants: "Participants",
@@ -25,16 +42,25 @@ const labels: Record<SectionKey, string> = {
   "problem-statements": "Problem Statements",
 };
 
-const endpoints: Partial<Record<Exclude<SectionKey, "payments">, string>> = {
-  teams: "/api/admin/teams",
-  participants: "/api/admin/participants",
-  domains: "/api/admin/domains",
-  colleges: "/api/admin/colleges",
-  rounds: "/api/admin/rounds",
-  "problem-statements": "/api/admin/problem-statements",
+const listLoaders: Partial<Record<SectionKey, () => Promise<Row[]>>> = {
+  teams: () => adminService.getTeams() as Promise<Row[]>,
+  participants: () => adminService.getParticipants() as Promise<Row[]>,
+  domains: () => adminService.getDomains() as Promise<Row[]>,
+  colleges: () => adminService.getColleges() as Promise<Row[]>,
+  rounds: () => adminService.getRounds() as Promise<Row[]>,
+  "problem-statements": () => adminService.getProblemStatements() as Promise<Row[]>,
+};
+
+const createLabels: Record<string, string> = {
+  domains: "New Domain",
+  colleges: "New College",
+  rounds: "New Round",
+  "problem-statements": "New Problem Statement",
 };
 
 export default function AdminSectionPage() {
+  useAdminGuard();
+  const toast = useToast();
   const { section } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -44,6 +70,8 @@ export default function AdminSectionPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | number | null>(null);
+  const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
+  const [editingRow, setEditingRow] = useState<Row | null>(null);
   const teamIdFilter = searchParams.get("teamId") ?? "";
 
   const title = useMemo(() => {
@@ -51,21 +79,15 @@ export default function AdminSectionPage() {
     return labels[key];
   }, [key]);
 
-  useEffect(() => {
-    if (!localStorage.getItem("admin_token")) {
-      navigate("/admin/login");
-      return;
-    }
-
+  const loadRows = useCallback(async () => {
     if (!key || key === "payments") {
       setRows([]);
       return;
     }
 
-    const endpoint = endpoints[key];
-    if (!endpoint) return;
+    const loader = listLoaders[key];
+    if (!loader) return;
 
-    let active = true;
     setLoading(true);
     setError("");
 
@@ -74,25 +96,21 @@ export default function AdminSectionPage() {
       params.teamId = teamIdFilter;
     }
 
-    api
-      .get(endpoint, { params })
-      .then((res) => {
-        if (!active) return;
-        setRows(Array.isArray(res.data.data) ? res.data.data : []);
-      })
-      .catch(() => {
-        if (!active) return;
-        setError("Failed to load data");
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
+    try {
+      const data = key === "participants"
+        ? ((await adminService.getParticipants(params)) as Row[])
+        : await loader();
+      setRows(Array.isArray(data) ? data : []);
+    } catch {
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  }, [key, teamIdFilter]);
 
-    return () => {
-      active = false;
-    };
-  }, [key, navigate, teamIdFilter]);
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
 
   const filteredRows = useMemo(() => {
     if (!query.trim()) return rows;
@@ -104,6 +122,62 @@ export default function AdminSectionPage() {
     );
   }, [query, rows]);
 
+  const closeModal = () => {
+    setModalMode(null);
+    setEditingRow(null);
+  };
+
+  const handleCreate = async (input: unknown) => {
+    if (key === "domains") await adminService.createDomain(input as never);
+    else if (key === "colleges") await adminService.createCollege(input as never);
+    else if (key === "rounds") await adminService.createRound(input as never);
+    else if (key === "problem-statements") await adminService.createProblemStatement(input as never);
+    toast.success(`${labels[key as SectionKey].slice(0, -1)} created.`);
+    closeModal();
+    loadRows();
+  };
+
+  const handleUpdate = async (input: unknown) => {
+    const id = Number(editingRow?.id);
+    if (key === "domains") await adminService.updateDomain(id, input as never);
+    else if (key === "colleges") await adminService.updateCollege(id, input as never);
+    else if (key === "rounds") await adminService.updateRound(id, input as never);
+    else if (key === "problem-statements") await adminService.updateProblemStatement(id, input as never);
+    toast.success(`${labels[key as SectionKey].slice(0, -1)} updated.`);
+    closeModal();
+    loadRows();
+  };
+
+  const handleToggle = async (row: Row) => {
+    const id = Number(row.id);
+    try {
+      if (key === "domains") {
+        await adminService.toggleDomainStatus(id, !(row.isActive as boolean));
+      } else if (key === "colleges") {
+        await adminService.toggleCollegeStatus(id, !(row.isActive as boolean));
+      } else if (key === "problem-statements") {
+        await adminService.publishProblemStatement(id, !(row.isPublished as boolean));
+      }
+      toast.success("Status updated.");
+      loadRows();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to update status."));
+    }
+  };
+
+  const handleTeamStatusChange = async (row: Row, status: TeamStatus) => {
+    if (status === "CANCELLED" && !window.confirm(`Cancel team "${row.teamName}"? This can be undone later, but the team won't count toward confirmed registrations.`)) {
+      return;
+    }
+    try {
+      await adminService.updateTeamStatus(Number(row.id), status);
+      toast.success(`Team status updated to ${status.replace("_", " ").toLowerCase()}.`);
+      loadRows();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to update team status."));
+    }
+  };
+
   return (
     <AdminShell
       title={title}
@@ -113,20 +187,28 @@ export default function AdminSectionPage() {
           : key === "participants"
             ? "Search participants quickly and inspect verification and college context."
             : key === "payments"
-              ? "Payments will be wired once that workflow starts."
+              ? "Payment records collected via Razorpay. Read-only here for now."
               : "Manage records in a clean, mobile-friendly card layout."
       }
       primaryAction={
-        key === "payments" ? null : (
+        key && CRUD_SECTIONS.includes(key) ? (
+          <button
+            type="button"
+            onClick={() => setModalMode("create")}
+            className="inline-flex h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 text-sm font-semibold text-white transition hover:brightness-110"
+          >
+            + {createLabels[key] ?? "New"}
+          </button>
+        ) : key !== "payments" ? (
           <div className="rounded-2xl border border-purple-400/25 bg-purple-500/10 px-3 py-2 text-sm text-purple-100">
             {rows.length} records
           </div>
-        )
+        ) : null
       }
     >
       {key === "payments" ? (
         <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 text-white/70">
-          Payments are not wired in the frontend yet.
+          Payments are recorded automatically once Razorpay checkout completes. A dedicated management view isn't wired up yet.
         </div>
       ) : (
         <div className="grid gap-5">
@@ -201,6 +283,23 @@ export default function AdminSectionPage() {
                       ))}
                     </div>
 
+                    {key === "teams" ? (
+                      <label className="mt-3 grid gap-1 text-xs text-white/50">
+                        Status
+                        <select
+                          value={String(row.status ?? "DRAFT")}
+                          onChange={(e) => handleTeamStatusChange(row, e.target.value as TeamStatus)}
+                          className="h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none focus:border-purple-400/50"
+                        >
+                          {TEAM_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {status.replace("_", " ")}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <button
                         className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
@@ -216,15 +315,42 @@ export default function AdminSectionPage() {
                           Participants
                         </button>
                       ) : null}
+                      {key && CRUD_SECTIONS.includes(key) ? (
+                        <button
+                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
+                          onClick={() => {
+                            setEditingRow(row);
+                            setModalMode("edit");
+                          }}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      {key === "domains" || key === "colleges" ? (
+                        <button
+                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
+                          onClick={() => handleToggle(row)}
+                        >
+                          {row.isActive === false ? "Activate" : "Deactivate"}
+                        </button>
+                      ) : null}
+                      {key === "problem-statements" ? (
+                        <button
+                          className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm font-medium text-white/85 transition hover:border-white/20 hover:bg-white/10"
+                          onClick={() => handleToggle(row)}
+                        >
+                          {row.isPublished ? "Unpublish" : "Publish"}
+                        </button>
+                      ) : null}
                     </div>
 
                     {isOpen ? (
                       <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/70">
                         {Object.entries(row)
-                          .filter(([key]) => key !== "passwordHash" && key !== "razorpaySignature")
-                          .map(([key, value]) => (
-                            <div key={key} className="flex items-start justify-between gap-3 border-b border-white/5 py-2 last:border-b-0">
-                              <span className="text-white/45">{formatKey(key)}</span>
+                          .filter(([field]) => field !== "passwordHash" && field !== "razorpaySignature")
+                          .map(([field, value]) => (
+                            <div key={field} className="flex items-start justify-between gap-3 border-b border-white/5 py-2 last:border-b-0">
+                              <span className="text-white/45">{formatKey(field)}</span>
                               <span className="text-right">{stringify(value)}</span>
                             </div>
                           ))}
@@ -237,6 +363,46 @@ export default function AdminSectionPage() {
           )}
         </div>
       )}
+
+      {modalMode && key === "domains" ? (
+        <Modal title={modalMode === "create" ? "New Domain" : "Edit Domain"} onClose={closeModal}>
+          <DomainForm
+            initial={modalMode === "edit" ? (editingRow as unknown as Domain) : undefined}
+            onSubmit={modalMode === "create" ? handleCreate : handleUpdate}
+            onCancel={closeModal}
+          />
+        </Modal>
+      ) : null}
+
+      {modalMode && key === "colleges" ? (
+        <Modal title={modalMode === "create" ? "New College" : "Edit College"} onClose={closeModal}>
+          <CollegeForm
+            initial={modalMode === "edit" ? (editingRow as unknown as College) : undefined}
+            onSubmit={modalMode === "create" ? handleCreate : handleUpdate}
+            onCancel={closeModal}
+          />
+        </Modal>
+      ) : null}
+
+      {modalMode && key === "rounds" ? (
+        <Modal title={modalMode === "create" ? "New Round" : "Edit Round"} onClose={closeModal}>
+          <RoundForm
+            initial={modalMode === "edit" ? (editingRow as unknown as Round) : undefined}
+            onSubmit={modalMode === "create" ? handleCreate : handleUpdate}
+            onCancel={closeModal}
+          />
+        </Modal>
+      ) : null}
+
+      {modalMode && key === "problem-statements" ? (
+        <Modal title={modalMode === "create" ? "New Problem Statement" : "Edit Problem Statement"} onClose={closeModal}>
+          <ProblemStatementForm
+            initial={modalMode === "edit" ? (editingRow as unknown as ProblemStatement) : undefined}
+            onSubmit={modalMode === "create" ? handleCreate : handleUpdate}
+            onCancel={closeModal}
+          />
+        </Modal>
+      ) : null}
     </AdminShell>
   );
 }
@@ -319,9 +485,9 @@ function summaryLines(section: SectionKey | undefined, row: Row) {
   }
 
   return Object.entries(row)
-    .filter(([key]) => key !== "id")
+    .filter(([field]) => field !== "id")
     .slice(0, 3)
-    .map(([key, value]) => `${formatKey(key)}: ${stringify(value)}`);
+    .map(([field, value]) => `${formatKey(field)}: ${stringify(value)}`);
 }
 
 function StatusPill({ value }: { value: unknown }) {

@@ -22,6 +22,7 @@ export type CollegeReference =
     };
 
 export type TeamMemberInput = {
+  id?: number;
   role: "LEADER" | "MEMBER";
   fullName: string;
   email: string;
@@ -56,6 +57,7 @@ export type TeamFormValues = {
   domainId: string;
   declarationAccepted?: boolean;
   members: Array<{
+    id?: number;
     role: "LEADER" | "MEMBER";
     fullName: string;
     email: string;
@@ -102,4 +104,5 @@ export type ResumeApplicationResponse = {
     status: string;
   };
   draft?: ResumeDraft;
+  payment?: { amountRupees: number };
 };

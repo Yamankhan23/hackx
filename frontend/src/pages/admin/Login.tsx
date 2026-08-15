@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
+import { adminService } from "../../services/admin.service";
+import { useToast } from "../../hooks/useToast";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -16,13 +18,21 @@ export default function AdminLogin() {
     setError("");
 
     try {
-      const { data } = await api.post("/api/admin/login", { email, password });
-      localStorage.setItem("admin_token", data.data.token);
-      localStorage.setItem("admin_name", data.data.admin.name);
-      localStorage.setItem("admin_email", data.data.admin.email);
+      const data = await adminService.login(email, password);
+      localStorage.setItem("admin_token", data.token);
+      localStorage.setItem("admin_name", data.admin.name);
+      localStorage.setItem("admin_email", data.admin.email);
       navigate("/admin/dashboard");
-    } catch {
-      setError("Invalid email or password");
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+
+      if (status === 401) {
+        setError("Invalid email or password");
+      } else if (status === 429) {
+        setError("Too many attempts. Please wait a few minutes and try again.");
+      } else {
+        toast.error("Unable to reach the server. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

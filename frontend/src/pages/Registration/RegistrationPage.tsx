@@ -23,6 +23,7 @@ import type {
   RegisterTeamPayload,
   ResumeDraft,
 } from "../../types/registration";
+import { useToast } from "../../hooks/useToast";
 
 const createEmptyMember = (role: "LEADER" | "MEMBER") => ({
   role,
@@ -39,6 +40,7 @@ const createEmptyMember = (role: "LEADER" | "MEMBER") => ({
 
 export function RegistrationPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const resumeToken = searchParams.get("token");
 
@@ -67,9 +69,12 @@ const [generalError, setGeneralError] = useState("");
     mode: "onTouched",
   });
 
+  // `keyName: "fieldKey"` keeps react-hook-form's internal per-row key out
+  // of the way of our own `id` field (the draft member's DB row id).
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "members",
+    keyName: "fieldKey",
   });
 
   // Pre-fill the form from a resumed draft
@@ -80,6 +85,7 @@ const [generalError, setGeneralError] = useState("");
         domainId: String(draft.domainId),
         declarationAccepted: draft.declarationAccepted,
         members: draft.members.map((member) => ({
+          id: member.id,
           role: member.role,
           fullName: member.fullName,
           email: member.email,
@@ -122,6 +128,13 @@ fetchColleges()
         }
 
         if (response.data.alreadySubmitted) {
+          if (response.data.status === "PENDING_PAYMENT") {
+            // Editing is over once verification is complete — send them to
+            // the payment step instead of showing a dead-end error here.
+            navigate(`/resume?token=${encodeURIComponent(resumeToken)}`, { replace: true });
+            return;
+          }
+
           setGeneralError(
             response.data.message ||
               "Your application has already been submitted."
@@ -157,7 +170,7 @@ fetchColleges()
     return () => {
       cancelled = true;
     };
-  }, [resumeToken, applyResumeDraft]);
+  }, [resumeToken, applyResumeDraft, navigate]);
 
   const selectedDomain = domains.find(
     (domain) => String(domain.id) === form.watch("domainId")
@@ -184,6 +197,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
     domainId: Number(values.domainId),
     declarationAccepted: Boolean(values.declarationAccepted),
     members: values.members.map((member) => ({
+      id: member.id,
       role: member.role,
       fullName: member.fullName,
       email: member.email.toLowerCase(),
@@ -203,9 +217,12 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
     setLoading(true);
 
     try {
-      if (resumeTeamId) {
-        // Update the existing draft (no duplicate created)
-        await updateTeam(resumeTeamId, buildPayload(values));
+      if (resumeToken && resumeTeamId) {
+        // Update the existing draft (no duplicate created). Uses the
+        // resume token (not the guessable teamId) so only whoever holds
+        // the emailed link can edit this team's draft.
+        await updateTeam(resumeToken, buildPayload(values));
+        toast.success("Draft saved.");
         navigate("/registration/verification", {
           state: {
             teamId: resumeTeamId,
@@ -214,6 +231,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
         });
       } else {
         const response = await registerTeam(buildPayload(values));
+        toast.success("Registration submitted! Check your email to verify.");
         navigate("/registration/verification", {
           state: {
             teamId: response.data.teamId,
@@ -238,7 +256,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-3xl flex-col justify-center">
         <div className="mb-4 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-purple-200/80">
-            MUSA HackX 2026
+            MUSA CodeX 2026
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
             Build. Innovate. Impact.
@@ -255,7 +273,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
             <p className="mt-1 text-sm text-slate-400">
               {resumeDraft
                 ? `Editing draft for "${resumeDraft.teamName}".`
-                : "Register your team for MUSA HackX 2026."}
+                : "Register your team for MUSA CodeX 2026."}
             </p>
           </div>
 
@@ -309,7 +327,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
                     />
                     <span>
                       I confirm that the information provided is accurate and complete, and I agree
-                      to the MUSA HackX 2026 registration terms.
+                      to the MUSA CodeX 2026 registration terms.
                     </span>
                   </label>
 

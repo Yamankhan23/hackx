@@ -24,17 +24,20 @@ import {
   updateDomain,
   updateProblemStatement,
   updateRound,
+  updateTeamStatus,
 } from "../controllers/admin.controller";
 import { requireAdminAuth } from "../middleware/admin-auth.middleware";
+import { adminLoginLimiter } from "../lib/rate-limit";
 
 const router = Router();
 
-router.post("/login", adminLogin);
+router.post("/login", adminLoginLimiter, adminLogin);
 router.use(requireAdminAuth);
 
 router.get("/dashboard", getDashboard);
 router.get("/teams", getTeams);
 router.get("/teams/:teamId", getTeamById);
+router.patch("/teams/:id/status", updateTeamStatus);
 router.get("/participants", getParticipants);
 router.get("/participants/:id", getParticipantById);
 router.get("/payments", getPayments);

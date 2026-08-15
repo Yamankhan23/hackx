@@ -26,7 +26,7 @@ export function Hero() {
         </div>
 
         <p className="animate-fade-up mt-6 text-xs font-semibold uppercase tracking-[0.4em] text-purple-200/80">
-          MUSA HackX 2026
+          MUSA CodeX 2026
         </p>
 
         <h1 className="animate-fade-up mt-4 text-4xl font-black leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">

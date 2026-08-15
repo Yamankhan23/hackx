@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { resendVerificationEmail } from "../../services/registration.service";
+import { useToast } from "../../hooks/useToast";
 
 type LocationState = {
   teamId?: string;
@@ -9,6 +12,26 @@ type LocationState = {
 export function VerificationStatusPage() {
   const location = useLocation();
   const state = location.state as LocationState | null;
+  const toast = useToast();
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleResend = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!email.trim()) return;
+
+    setSending(true);
+    try {
+      const response = await resendVerificationEmail(email.trim());
+      setSent(true);
+      toast.success(response.message);
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#050816] px-4 py-6 text-white">
@@ -32,6 +55,30 @@ export function VerificationStatusPage() {
             <p className="mt-1">We&apos;ve sent verification links to all team members.</p>
             {state?.teamId ? <p className="mt-2 text-xs text-slate-500">Team ID: {state.teamId}</p> : null}
             {state?.registrationId ? <p className="text-xs text-slate-500">Registration ID: {state.registrationId}</p> : null}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm text-slate-300">
+            <p className="font-medium text-white">Didn&apos;t get the email?</p>
+            <p className="mt-1 text-slate-400">Enter a team member&apos;s email to resend their verification link.</p>
+            <form className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]" onSubmit={handleResend}>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setSent(false);
+                }}
+                placeholder="member@example.com"
+                className="h-11 w-full rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
+              />
+              <button
+                type="submit"
+                disabled={sending || !email.trim()}
+                className="h-11 rounded-xl border border-purple-400/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sending ? "Sending..." : sent ? "Sent" : "Resend"}
+              </button>
+            </form>
           </div>
 
           <Link
