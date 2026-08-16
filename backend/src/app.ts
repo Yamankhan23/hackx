@@ -12,6 +12,13 @@ import { globalLimiter } from "./lib/rate-limit";
 
 const app = express();
 
+// Render (and most PaaS platforms) put the app behind exactly one reverse
+// proxy hop, which sets X-Forwarded-For. Without this, Express ignores that
+// header (req.ip is always the proxy's own IP) and express-rate-limit can't
+// tell users apart — trusting exactly 1 hop fixes both without blindly
+// trusting an arbitrary client-supplied header chain.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 
 // FRONTEND_URL is validated as present at boot (see server.ts) — no
