@@ -25,7 +25,7 @@ const memberSchema = z.object({
   yearOfStudy: z
     .string()
     .trim()
-    .regex(/^[1-6]$/, "Year of study must be between 1 and 6"),
+    .regex(/^[1-4]$/, "Year of study must be between 1 and 4"),
 });
 
 export const registrationSchema = z

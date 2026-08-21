@@ -132,3 +132,48 @@ export const sendPaymentLinkEmail = async ({
 
   return data;
 };
+
+export const sendPaymentConfirmationEmail = async ({
+  email,
+  name,
+  teamName,
+  teamId,
+  amount,
+}: {
+  email: string;
+  name: string;
+  teamName: string;
+  teamId: string | null;
+  amount: number;
+}) => {
+  const safeName = escapeHtml(name);
+  const safeTeamName = escapeHtml(teamName);
+
+  const { data, error } = await resend.emails.send({
+    from: process.env.EMAIL_FROM!,
+    to: email,
+    subject: "Payment confirmed — you're in! – MUSA CodeX 2026",
+    html: renderEmailLayout({
+      preheader: `${safeTeamName}'s registration is confirmed for MUSA CodeX 2026.`,
+      heading: `You're confirmed, ${safeName}!`,
+      bodyHtml: `
+        <p style="margin:0 0 12px;">
+          We've received your payment of <strong>₹${amount}</strong> and <strong>${safeTeamName}</strong>'s
+          registration for MUSA CodeX 2026 is now confirmed.
+        </p>
+        ${teamId ? `<p style="margin:0 0 12px;">Team ID: <strong>${escapeHtml(teamId)}</strong></p>` : ""}
+        <p style="margin:0;">We'll be in touch with further details as the event approaches. See you there!</p>
+      `,
+      ctaLabel: "Visit MUSA CodeX 2026",
+      ctaUrl: process.env.FRONTEND_URL!,
+      footerNote:
+        "This is a confirmation of your team's payment — no action is needed. — MUSA CodeX 2026 Team",
+    }),
+  });
+
+  if (error) {
+    throw new Error(`Failed to send payment confirmation email: ${error.message}`);
+  }
+
+  return data;
+};

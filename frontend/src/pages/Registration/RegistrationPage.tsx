@@ -232,7 +232,6 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
         navigate("/registration/verification", {
           state: {
             teamId: response.data.teamId,
-            registrationId: response.data.registrationId,
             teamName: response.data.teamName,
           },
         });

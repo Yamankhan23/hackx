@@ -5,7 +5,6 @@ import { useToast } from "../../hooks/useToast";
 
 type LocationState = {
   teamId?: string;
-  registrationId?: string;
   teamName?: string;
 };
 
@@ -54,7 +53,6 @@ export function VerificationStatusPage() {
             <p className="font-medium text-white">Verification links sent</p>
             <p className="mt-1">We&apos;ve sent verification links to all team members.</p>
             {state?.teamId ? <p className="mt-2 text-xs text-slate-500">Team ID: {state.teamId}</p> : null}
-            {state?.registrationId ? <p className="text-xs text-slate-500">Registration ID: {state.registrationId}</p> : null}
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm text-slate-300">

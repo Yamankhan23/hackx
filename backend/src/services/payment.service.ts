@@ -10,6 +10,7 @@ import {
   verifyPaymentSignature,
   verifyWebhookSignature,
 } from "../lib/razorpay";
+import { sendPaymentConfirmationEmail } from "./email.service";
 
 const resolveLeaderTeamByToken = async (token: string) => {
   const tokenHash = hashVerificationToken(token);
@@ -19,6 +20,8 @@ const resolveLeaderTeamByToken = async (token: string) => {
       id: teamMembers.id,
       role: teamMembers.role,
       teamId: teamMembers.teamId,
+      email: teamMembers.email,
+      fullName: teamMembers.fullName,
       emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
     })
     .from(teamMembers)
@@ -128,7 +131,7 @@ export const verifyAndConfirmPayment = async (input: {
   razorpayPaymentId: string;
   razorpaySignature: string;
 }) => {
-  const { team } = await resolveLeaderTeamByToken(input.token);
+  const { leader, team } = await resolveLeaderTeamByToken(input.token);
 
   if (team.status === "CONFIRMED") {
     return { alreadyConfirmed: true };
@@ -184,10 +187,29 @@ export const verifyAndConfirmPayment = async (input: {
     })
     .where(eq(payments.id, payment.id));
 
-  await db
+  // .returning() here is the atomic signal that THIS call performed the
+  // transition (guards against the client-side verify call and the webhook
+  // racing each other) — only the caller that actually flips the status
+  // sends the one confirmation email, to the leader only.
+  const [transitioned] = await db
     .update(teams)
     .set({ status: "CONFIRMED" })
-    .where(and(eq(teams.id, team.id), eq(teams.status, "PENDING_PAYMENT")));
+    .where(and(eq(teams.id, team.id), eq(teams.status, "PENDING_PAYMENT")))
+    .returning({ id: teams.id });
+
+  if (transitioned) {
+    try {
+      await sendPaymentConfirmationEmail({
+        email: leader.email,
+        name: leader.fullName,
+        teamName: team.teamName,
+        teamId: team.teamId,
+        amount: REGISTRATION_FEE_RUPEES,
+      });
+    } catch (error) {
+      console.error("Failed to send payment confirmation email:", error);
+    }
+  }
 
   return { alreadyConfirmed: false };
 };
@@ -238,8 +260,8 @@ export const handleRazorpayWebhook = async (
   if (event.event === "payment.captured") {
     // The client-side verify call usually lands before this webhook does, so
     // status is often already SUCCESS by now — but the method still needs
-    // backfilling, so it's updated unconditionally while status/paidAt/team
-    // confirmation stay guarded to a single first-time transition.
+    // backfilling, so it's updated unconditionally while paidAt stays
+    // guarded to the first-time transition.
     const alreadyConfirmed = payment.status === "SUCCESS";
 
     await db
@@ -251,13 +273,37 @@ export const handleRazorpayWebhook = async (
       })
       .where(eq(payments.id, payment.id));
 
-    if (!alreadyConfirmed) {
-      await db
-        .update(teams)
-        .set({ status: "CONFIRMED" })
-        .where(
-          and(eq(teams.id, payment.teamId), eq(teams.status, "PENDING_PAYMENT"))
-        );
+    // The WHERE guard below is the atomic, race-safe signal for "did THIS
+    // call perform the transition" (it's what decides whether the client-side
+    // verify call or this webhook wins the race) — always attempt it rather
+    // than pre-gating on `alreadyConfirmed`, which reflects the payments
+    // table and could be a beat out of sync with the teams table.
+    const [transitioned] = await db
+      .update(teams)
+      .set({ status: "CONFIRMED" })
+      .where(and(eq(teams.id, payment.teamId), eq(teams.status, "PENDING_PAYMENT")))
+      .returning({ id: teams.id, teamName: teams.teamName, teamId: teams.teamId });
+
+    if (transitioned) {
+      const [leader] = await db
+        .select({ email: teamMembers.email, fullName: teamMembers.fullName })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, transitioned.id), eq(teamMembers.role, "LEADER")))
+        .limit(1);
+
+      if (leader) {
+        try {
+          await sendPaymentConfirmationEmail({
+            email: leader.email,
+            name: leader.fullName,
+            teamName: transitioned.teamName,
+            teamId: transitioned.teamId,
+            amount: payment.amount,
+          });
+        } catch (error) {
+          console.error("Failed to send payment confirmation email:", error);
+        }
+      }
     }
   } else if (event.event === "payment.failed") {
     await db

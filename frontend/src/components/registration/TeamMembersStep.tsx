@@ -22,8 +22,19 @@ setValue: UseFormSetValue<RegistrationFormValues>;
   onRemoveMember: (index: number) => void;
   memberCount: number;
 }) {
+  const membersErrorsObj = errors.members as
+    | { message?: string; root?: { message?: string } }
+    | undefined;
+  const membersError = membersErrorsObj?.root?.message ?? membersErrorsObj?.message;
+
   return (
     <div className="grid gap-4">
+      {membersError ? (
+        <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          {membersError}
+        </p>
+      ) : null}
+
       {[0, 1, 2, 3].slice(0, memberCount).map((index) => (
         <TeamMemberCard
           key={index}

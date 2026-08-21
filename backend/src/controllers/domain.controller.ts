@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { domains } from "../db/migrations/schema";
 
@@ -12,7 +13,8 @@ export const getDomains = async (
         id: domains.id,
         name: domains.name,
       })
-      .from(domains);
+      .from(domains)
+      .where(eq(domains.isActive, true));
 
     res.status(200).json({
       success: true,

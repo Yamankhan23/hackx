@@ -18,6 +18,8 @@ setValue: UseFormSetValue<RegistrationFormValues>;
   onRemove?: () => void;
 };
 
+const YEAR_OF_STUDY_OPTIONS = ["1", "2", "3", "4"];
+
 const memberFields: Array<[
   keyof RegistrationFormValues["members"][number],
   string,
@@ -28,7 +30,6 @@ const memberFields: Array<[
   ["mobileNumber", "Mobile Number", { type: "tel", inputMode: "tel" }],
   ["region", "Region"],
   ["branch", "Branch"],
-  ["yearOfStudy", "Year of Study", { inputMode: "numeric", maxLength: 1 }],
 ];
 
 export function TeamMemberCard({
@@ -103,6 +104,27 @@ const handleManualNameChange = useCallback(
             </span>
           </label>
         ))}
+
+        <label className="grid gap-1.5 sm:col-span-2">
+          <span className="text-xs font-medium text-slate-300">Year of Study</span>
+          <select
+            {...register(`members.${index}.yearOfStudy`)}
+            defaultValue=""
+            className="h-11 rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
+          >
+            <option value="" disabled>
+              Select year
+            </option>
+            {YEAR_OF_STUDY_OPTIONS.map((year) => (
+              <option key={year} value={year}>
+                Year {year}
+              </option>
+            ))}
+          </select>
+          <span className="min-h-4 text-xs text-rose-300">
+            {(memberErrors?.yearOfStudy as { message?: string } | undefined)?.message}
+          </span>
+        </label>
 
         <label className="grid gap-1.5 sm:col-span-2">
           <span className="text-xs font-medium text-slate-300">College</span>
