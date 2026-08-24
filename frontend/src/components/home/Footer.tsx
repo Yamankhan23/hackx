@@ -52,7 +52,7 @@ export function Footer() {
             <a href="#home" className="flex items-center gap-2.5">
               <img
                 src="/musa-logo.png"
-                alt="MUSA — Maharashtra University Students Association"
+                alt="MUSA, the Maharashtra University Students Association"
                 className="h-10 w-10 rounded-full object-contain ring-1 ring-white/10"
               />
               <span className="flex flex-col leading-none">

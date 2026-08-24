@@ -227,7 +227,7 @@ function PaymentCard({
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         name: "MUSA CodeX 2026",
-        description: `Registration fee — ${order.teamName}`,
+        description: `Registration fee for ${order.teamName}`,
         order_id: order.orderId,
         handler: (response) => {
           verifyPayment({
@@ -244,7 +244,7 @@ function PaymentCard({
               toast.error(
                 getApiErrorMessage(
                   err,
-                  "We couldn't confirm your payment automatically. If money was deducted, contact support — we'll reconcile it shortly."
+                  "We couldn't confirm your payment automatically. If money was deducted, contact support and we'll reconcile it shortly."
                 )
               );
             })

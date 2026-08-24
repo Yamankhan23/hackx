@@ -66,7 +66,7 @@ export function Prizes() {
               Win big. <span className="text-gradient">Earn glory.</span>
             </>
           }
-          subtitle="₹50,000 total prize pool — the top teams walk away with trophies, cash prizes, and recognition."
+          subtitle="₹50,000 total prize pool: the top teams walk away with trophies, cash prizes, and recognition."
         />
 
         <div

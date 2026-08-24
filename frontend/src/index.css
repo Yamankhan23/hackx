@@ -6,6 +6,7 @@
   --color-brand-purple: #a855f7;
   --color-brand-blue: #3b82f6;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-heading: "Poppins", "Inter", system-ui, -apple-system, sans-serif;
 }
 
 :root {
@@ -20,6 +21,15 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
 }
 
 html,

@@ -18,7 +18,7 @@ const faqs = [
   },
   {
     q: "What is the registration fee?",
-    a: "There's no registration fee — Round 1 is completely free to enter. Make sure your team registers before Round 1 begins on 16 September 2026.",
+    a: "There's no registration fee. Round 1 is completely free to enter. Make sure your team registers before Round 1 begins on 16 September 2026.",
   },
   {
     q: "How does the competition work?",

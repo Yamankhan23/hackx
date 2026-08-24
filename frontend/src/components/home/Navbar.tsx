@@ -46,7 +46,7 @@ export function Navbar() {
         <a href="#home" className="group flex items-center gap-2">
           <img
             src="/musa-logo.png"
-            alt="MUSA — Maharashtra University Students Association"
+            alt="MUSA, the Maharashtra University Students Association"
             className="h-7 w-7 rounded-full object-contain ring-1 ring-white/10"
           />
           <span className="flex flex-col leading-none">

@@ -74,7 +74,7 @@ export function WhyParticipate() {
           eyebrow="Why Participate"
           title={
             <>
-              More than a contest — a{" "}
+              Beyond a contest, a{" "}
               <span className="text-gradient">launchpad</span>
             </>
           }

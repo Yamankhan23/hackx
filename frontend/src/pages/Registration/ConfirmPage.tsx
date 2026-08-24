@@ -93,7 +93,7 @@ function ReadyState({
       </h1>
       <p className="mt-3 text-sm leading-6 text-slate-300">
         <span className="font-medium text-white">{data.team.teamName}</span>'s registration for
-        MUSA CodeX 2026 — Round 1 is confirmed. See you there!
+        MUSA CodeX 2026, Round 1, is confirmed. See you there!
       </p>
       <Link
         to={`/resume?token=${encodeURIComponent(token)}`}

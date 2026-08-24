@@ -59,7 +59,7 @@ const labels: Record<SectionKey, string> = {
 const subtitles: Partial<Record<SectionKey, string>> = {
   teams: "Scan team status, review members, and jump into details without wading through a dense table.",
   participants: "Search participants quickly and inspect verification and college context.",
-  payments: "Who paid, what for, how much, and when — synced from Razorpay.",
+  payments: "Who paid, what for, how much, and when. All synced from Razorpay.",
 };
 
 const listLoaders: Partial<Record<SectionKey, () => Promise<Row[]>>> = {

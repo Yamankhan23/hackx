@@ -41,7 +41,7 @@ export function About() {
         <div className="mt-8 flex justify-center">
           <img
             src="/musa-logo.png"
-            alt="Organized by MUSA — Maharashtra University Students Association"
+            alt="Organized by MUSA, the Maharashtra University Students Association"
             className="h-24 w-24 rounded-full object-contain ring-1 ring-white/10 shadow-glow sm:h-28 sm:w-28"
           />
         </div>
@@ -64,7 +64,7 @@ export function About() {
             that test your thinking and execution, culminating in an{" "}
             <span className="font-semibold text-white">offline Grand Finale</span> where the{" "}
             <span className="font-semibold text-white">top 15 teams</span> compete live to
-            build something extraordinary — and take home the crown.
+            build something extraordinary and take home the crown.
           </p>
         </div>
 

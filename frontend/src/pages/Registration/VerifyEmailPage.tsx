@@ -115,7 +115,7 @@ function SuccessState({
       ) : allVerified ? (
         <>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            Your email address has been verified. Your whole team is now verified — the team
+            Your email address has been verified. Your whole team is now verified, and the team
             leader will receive a payment link shortly to confirm your spot.
           </p>
           <Link

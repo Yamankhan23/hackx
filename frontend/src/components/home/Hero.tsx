@@ -36,7 +36,7 @@ export function Hero() {
 
         <p className="animate-fade-up mx-auto mt-6 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
           A futuristic hackathon where brilliant minds from Mumbai&apos;s
-          engineering colleges come together to solve real-world problems —
+          engineering colleges come together to solve real-world problems
           through two rigorous online rounds and a grand offline finale.
         </p>
 

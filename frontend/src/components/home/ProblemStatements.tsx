@@ -39,7 +39,7 @@ export function ProblemStatements() {
               </h3>
               <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-400 sm:text-base">
                 We&apos;re crafting real-world problems across all ten domains.
-                Stay tuned — they&apos;ll be announced right here before the
+                Stay tuned: they&apos;ll be announced right here before the
                 competition begins.
               </p>
               <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-4 py-1.5 text-xs font-medium text-purple-100">
