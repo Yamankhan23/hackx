@@ -10,6 +10,7 @@ import adminRoutes from "./routes/admin.routes";
 import { razorpayWebhookController } from "./controllers/payment.controller";
 import { globalLimiter } from "./lib/rate-limit";
 import { httpLogger } from "./lib/http-logger";
+import { corsOptions } from "./lib/cors";
 
 const app = express();
 
@@ -27,14 +28,9 @@ app.use(httpLogger);
 
 app.use(helmet());
 
-// FRONTEND_URL is validated as present at boot (see server.ts) — no
-// same-origin-as-dev fallback here, since that would silently reject the
-// real deployed frontend if the env var were ever missing in production.
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL,
-  })
-);
+// Allow-lists FRONTEND_URL (validated as present at boot, see server.ts)
+// plus any origins in ADDITIONAL_CORS_ORIGINS — see lib/cors.ts.
+app.use(cors(corsOptions));
 
 // Mounted before express.json() — Razorpay webhook signatures must be
 // verified against the exact raw request body, not the re-serialized JSON.

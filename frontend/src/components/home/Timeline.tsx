@@ -34,6 +34,7 @@ const steps = [
     date: "27 September 2026",
     desc: "Offline finale in Mumbai — build live and compete for the crown.",
     highlight: true,
+    locationUrl: "https://maps.app.goo.gl/SCeVjxNwF9wK9DEH9",
   },
 ];
 
@@ -114,6 +115,16 @@ export function Timeline() {
                     <p className="mt-2 text-sm leading-relaxed text-slate-400">
                       {step.desc}
                     </p>
+                    {step.locationUrl ? (
+                      <a
+                        href={step.locationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-purple-300 underline-offset-4 hover:text-purple-200 hover:underline"
+                      >
+                        View venue on Google Maps
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               );

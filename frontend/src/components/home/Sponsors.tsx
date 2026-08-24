@@ -2,8 +2,7 @@ import { SectionHeading } from "./SectionHeading";
 import { useInView } from "./useInView";
 import { cn } from "../../lib/utils";
 
-// TODO: paste the "Become a Sponsor" Google Form link here once it's ready.
-const SPONSOR_FORM_URL = "#";
+const SPONSOR_FORM_URL = "https://forms.gle/yyJStiapcfosTSir5";
 
 export function Sponsors() {
   const { ref, inView } = useInView<HTMLDivElement>();
