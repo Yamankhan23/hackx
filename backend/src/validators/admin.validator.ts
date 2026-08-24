@@ -62,8 +62,35 @@ export const createProblemStatementSchema = z.object({
   isPublished: z.boolean().optional().default(false),
 });
 
+export const teamStatusValues = [
+  "DRAFT",
+  "PENDING_PAYMENT",
+  "CONFIRMED",
+  "CANCELLED",
+] as const;
+
+export const paymentStatusValues = [
+  "CREATED",
+  "PENDING",
+  "SUCCESS",
+  "FAILED",
+  "REFUNDED",
+] as const;
+
 export const updateTeamStatusSchema = z.object({
-  status: z.enum(["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CANCELLED"]),
+  status: z.enum(teamStatusValues),
+});
+
+export const toggleActiveSchema = z.object({
+  isActive: z.boolean(),
+});
+
+export const togglePublishedSchema = z.object({
+  isPublished: z.boolean(),
+});
+
+export const toggleRoundStatusSchema = z.object({
+  status: z.enum(["UPCOMING", "ACTIVE", "COMPLETED"]),
 });
 
 export const selectTeamsForRound2Schema = z.object({

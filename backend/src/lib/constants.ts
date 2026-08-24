@@ -1,5 +1,10 @@
 export const VERIFICATION_EXPIRY_HOURS = 24;
 
+// Pinned explicitly on both sign and verify so a future change to one side
+// can't silently drift from the other, and so verify never falls back to
+// accepting an unexpected algorithm.
+export const ADMIN_JWT_ALGORITHM = "HS256" as const;
+
 // Flat registration fee per team, charged once by the team leader after
 // every member has verified their email. Stored/quoted in whole rupees;
 // converted to paise only at the Razorpay API boundary (see lib/razorpay.ts).

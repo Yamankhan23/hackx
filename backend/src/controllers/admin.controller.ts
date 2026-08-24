@@ -27,13 +27,19 @@ import {
   createDomainSchema,
   createProblemStatementSchema,
   createRoundSchema,
+  paymentStatusValues,
   selectTeamsForRound2Schema,
+  teamStatusValues,
+  toggleActiveSchema,
+  togglePublishedSchema,
+  toggleRoundStatusSchema,
   updateCollegeSchema,
   updateDomainSchema,
   updateProblemStatementSchema,
   updateRoundSchema,
   updateTeamStatusSchema,
 } from "../validators/admin.validator";
+import { ADMIN_JWT_ALGORITHM } from "../lib/constants";
 import { selectTeamsForRound2 as selectTeamsForRound2Service } from "../services/team.service";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -77,7 +83,10 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const token = jwt.sign({ adminId: admin.id, role: admin.role }, jwtSecret, { expiresIn: "8h" });
+    const token = jwt.sign({ adminId: admin.id, role: admin.role }, jwtSecret, {
+      expiresIn: "8h",
+      algorithm: ADMIN_JWT_ALGORITHM,
+    });
 
     await db.update(admins).set({ lastLoginAt: new Date().toISOString() }).where(eq(admins.id, admin.id));
 
@@ -189,8 +198,14 @@ export const getTeams = async (req: Request, res: Response): Promise<void> => {
     const { page, limit, offset } = pagination(req);
     const search = String(req.query.search ?? "").trim();
     const status = String(req.query.status ?? "").trim();
+
+    if (status && !teamStatusValues.includes(status as (typeof teamStatusValues)[number])) {
+      res.status(400).json({ success: false, message: "Invalid status filter" });
+      return;
+    }
+
     const filters: SQL[] = [];
-    if (status) filters.push(eq(teams.status, status as never));
+    if (status) filters.push(eq(teams.status, status as (typeof teamStatusValues)[number]));
     if (search) {
       filters.push(
         or(
@@ -432,8 +447,14 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
     const { page, limit, offset } = pagination(req);
     const search = String(req.query.search ?? "").trim();
     const status = String(req.query.status ?? "").trim();
+
+    if (status && !paymentStatusValues.includes(status as (typeof paymentStatusValues)[number])) {
+      res.status(400).json({ success: false, message: "Invalid status filter" });
+      return;
+    }
+
     const filters: SQL[] = [];
-    if (status) filters.push(eq(payments.status, status as never));
+    if (status) filters.push(eq(payments.status, status as (typeof paymentStatusValues)[number]));
     if (search) {
       filters.push(
         or(
@@ -536,8 +557,13 @@ export const updateDomain = async (req: Request, res: Response): Promise<void> =
 
 export const toggleDomainStatus = async (req: Request, res: Response): Promise<void> => {
   try {
+    const validation = toggleActiveSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
     const id = Number(req.params.id);
-    const [updated] = await db.update(domains).set({ isActive: Boolean(req.body?.isActive) }).where(eq(domains.id, id)).returning();
+    const [updated] = await db.update(domains).set({ isActive: validation.data.isActive }).where(eq(domains.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Domain not found" });
       return;
@@ -596,8 +622,13 @@ export const updateCollege = async (req: Request, res: Response): Promise<void> 
 
 export const toggleCollegeStatus = async (req: Request, res: Response): Promise<void> => {
   try {
+    const validation = toggleActiveSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
     const id = Number(req.params.id);
-    const [updated] = await db.update(colleges).set({ isActive: Boolean(req.body?.isActive) }).where(eq(colleges.id, id)).returning();
+    const [updated] = await db.update(colleges).set({ isActive: validation.data.isActive }).where(eq(colleges.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "College not found" });
       return;
@@ -656,8 +687,13 @@ export const updateRound = async (req: Request, res: Response): Promise<void> =>
 
 export const toggleRoundStatus = async (req: Request, res: Response): Promise<void> => {
   try {
+    const validation = toggleRoundStatusSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
     const id = Number(req.params.id);
-    const [updated] = await db.update(rounds).set({ status: req.body?.status }).where(eq(rounds.id, id)).returning();
+    const [updated] = await db.update(rounds).set({ status: validation.data.status }).where(eq(rounds.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Round not found" });
       return;
@@ -728,10 +764,15 @@ export const updateProblemStatement = async (req: Request, res: Response): Promi
 
 export const publishProblemStatement = async (req: Request, res: Response): Promise<void> => {
   try {
+    const validation = togglePublishedSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
     const id = Number(req.params.id);
     const [updated] = await db
       .update(problemStatements)
-      .set({ isPublished: Boolean(req.body?.isPublished) })
+      .set({ isPublished: validation.data.isPublished })
       .where(eq(problemStatements.id, id))
       .returning();
     if (!updated) {

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { admins } from "../db/migrations/schema";
+import { ADMIN_JWT_ALGORITHM } from "../lib/constants";
 
 type AdminTokenPayload = {
   adminId: number;
@@ -36,7 +37,9 @@ export const requireAdminAuth = async (
       return;
     }
 
-    const decoded = jwt.verify(token, jwtSecret) as AdminTokenPayload;
+    const decoded = jwt.verify(token, jwtSecret, {
+      algorithms: [ADMIN_JWT_ALGORITHM],
+    }) as AdminTokenPayload;
 
     if (!decoded?.adminId) {
       res.status(401).json({ success: false, message: "Unauthorized" });
