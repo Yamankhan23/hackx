@@ -134,7 +134,7 @@ export function Footer() {
               <li className="flex items-start gap-2.5">
                 <span className="mt-0.5 text-purple-300">📞</span>
                 <span>
-                  General:{" "}
+                  Shifa Shaikh (President):{" "}
                   <a href="tel:+918657224803" className="hover:text-white">
                     +91 86572 24803
                   </a>
@@ -146,6 +146,33 @@ export function Footer() {
                   Partnership:{" "}
                   <a href="tel:+919284363442" className="hover:text-white">
                     +91 92843 63442
+                  </a>
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-purple-300">👤</span>
+                <span>
+                  Yash Nikam:{" "}
+                  <a href="tel:+919137444346" className="hover:text-white">
+                    +91 91374 44346
+                  </a>
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-purple-300">👤</span>
+                <span>
+                  Kesar Rahate:{" "}
+                  <a href="tel:+919321876054" className="hover:text-white">
+                    +91 93218 76054
+                  </a>
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-purple-300">👤</span>
+                <span>
+                  Vedant Nakhate:{" "}
+                  <a href="tel:+918591897851" className="hover:text-white">
+                    +91 85918 97851
                   </a>
                 </span>
               </li>
