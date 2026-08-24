@@ -22,7 +22,7 @@ const faqs = [
   },
   {
     q: "How does the competition work?",
-    a: "It's a five-stage journey: Registration → Round 1 → Round 2 → Top 15 → Grand Finale. Registration opens 22 August 2026, Round 1 is on 16 September 2026, Round 2 is on 22 September 2026, and the Grand Finale is on 27 September 2026.",
+    a: "It's a five-stage journey: Registration → Round 1 → Round 2 → Top 15 → Grand Finale. Registration opens 24 August 2026, Round 1 is on 16 September 2026, Round 2 is on 22 September 2026, and the Grand Finale is on 27 September 2026.",
   },
   {
     q: "How many teams qualify for the Grand Finale?",

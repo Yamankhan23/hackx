@@ -6,7 +6,7 @@ const steps = [
   {
     phase: "Phase 01",
     title: "Registration",
-    date: "Opens 22 August 2026",
+    date: "Opens 24 August 2026",
     note: "Closes before Round 1 begins",
     desc: "Register your team and pick your domain to lock in your spot.",
   },

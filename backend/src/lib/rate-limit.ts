@@ -29,9 +29,15 @@ export const adminLoginLimiter = rateLimit({
 
 // Applied to public team endpoints that trigger emails or accept tokens
 // (register, continue/resend, resume, payment) to blunt spam/abuse.
+//
+// Kept generous on purpose: many legitimate teams can share one public IP
+// (college WiFi/NAT, a hostel router) and hit register/confirm/resume/payment
+// in the same 15-minute window during a launch-day spike — a strict limit
+// here would block real users, not abusers. Configurable via env in case it
+// needs tuning without a redeploy.
 export const publicTeamLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 30,
+  limit: Number(process.env.PUBLIC_TEAM_RATE_LIMIT ?? 100),
   standardHeaders: true,
   legacyHeaders: false,
   message: {

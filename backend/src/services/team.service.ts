@@ -1,4 +1,5 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import crypto from "crypto";
 import { db } from "../db";
 import {
   colleges,
@@ -13,17 +14,25 @@ import type {
 import {
   generateVerificationToken,
   hashVerificationToken,
+  isTokenFreshlyMinted,
 } from "../lib/verification-token";
-import { REGISTRATION_FEE_RUPEES, VERIFICATION_EXPIRY_HOURS } from "../lib/constants";
+import {
+  REGISTRATION_FEE_RUPEES,
+  RESUME_TOKEN_REUSE_WINDOW_MS,
+  VERIFICATION_EXPIRY_HOURS,
+} from "../lib/constants";
 import { logger } from "../lib/logger";
 
-import {
-  sendConfirmRegistrationEmail,
-  sendPaymentLinkEmail,
-  sendRegistrationConfirmationEmail,
-  sendRound2SelectionEmail,
-  sendVerificationEmail,
-} from "./email.service";
+import { enqueueEmailJob } from "./email-queue.service";
+
+// Short random suffix for temporary IDs (team_id/payment_id/college_id
+// columns before they're overwritten with their readable DB-id-derived
+// form). Date.now() alone has only millisecond resolution — under a launch
+// spike, two concurrent inserts landing in the same millisecond would
+// collide on the unique constraint and fail a legitimate request.
+const randomSuffix = () => crypto.randomInt(100000, 999999);
+// colleges.college_id is VARCHAR(20) — too short for the 6-digit suffix above.
+const shortRandomSuffix = () => crypto.randomInt(1000, 9999);
 
 // Shared helper: resolve an existing college or upsert a new one for each member.
 const resolveColleges = async (
@@ -64,7 +73,7 @@ const resolveColleges = async (
         .insert(colleges)
         .values({
           // Short temporary ID because colleges.college_id is VARCHAR(20)
-          collegeId: `T-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          collegeId: `T-${Date.now()}-${shortRandomSuffix()}`,
           name: normalizedCollegeName,
           region: member.region,
         })
@@ -159,7 +168,7 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     // ---------------------------------------------------------
 
     // Short temporary ID because teams.team_id is VARCHAR(30)
-    const temporaryTeamId = `TEMP-${Date.now()}`;
+    const temporaryTeamId = `TEMP-${Date.now()}-${randomSuffix()}`;
 
     const [team] = await tx
       .insert(teams)
@@ -268,16 +277,17 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     })
     .where(eq(teamMembers.id, result.leaderMember.id));
 
-  try {
-    await sendConfirmRegistrationEmail({
+  await enqueueEmailJob({
+    emailType: "confirm_registration",
+    recipient: result.leaderMember.email,
+    dedupeKey: `confirm_registration:${hashVerificationToken(resumeToken)}`,
+    payload: {
       email: result.leaderMember.email,
       name: result.leaderMember.fullName,
       teamName: result.teamName,
       confirmToken: resumeToken,
-    });
-  } catch (error) {
-    logger.error({ err: error }, "Failed to send confirmation email");
-  }
+    },
+  });
 
   const { leaderMember, ...response } = result;
 
@@ -443,12 +453,17 @@ export const selectTeamsForRound2 = async (teamIds: number[]) => {
         })
         .where(eq(teamMembers.id, leader.id));
 
-      await sendRound2SelectionEmail({
-        email: leader.email,
-        name: leader.fullName,
-        teamName: team.teamName,
-        amount: REGISTRATION_FEE_RUPEES,
-        paymentToken: token,
+      await enqueueEmailJob({
+        emailType: "round2_selection",
+        recipient: leader.email,
+        dedupeKey: `round2_selection:${tokenHash}`,
+        payload: {
+          email: leader.email,
+          name: leader.fullName,
+          teamName: team.teamName,
+          amount: REGISTRATION_FEE_RUPEES,
+          paymentToken: token,
+        },
       });
 
       selected.push({ teamId: team.teamId, teamName: team.teamName });
@@ -582,17 +597,18 @@ export const verifyEmail = async (token: string) => {
         if (leader.id === member.id) {
           paymentToken = leaderToken;
         } else {
-          try {
-            await sendPaymentLinkEmail({
+          await enqueueEmailJob({
+            emailType: "payment_link",
+            recipient: leader.email,
+            dedupeKey: `payment_link:${leaderTokenHash}`,
+            payload: {
               email: leader.email,
               name: leader.fullName,
               teamName: transitioned.teamName,
               amount: REGISTRATION_FEE_RUPEES,
               paymentToken: leaderToken,
-            });
-          } catch (error) {
-            logger.error({ err: error }, "Failed to send payment link email");
-          }
+            },
+          });
         }
       }
     }
@@ -660,20 +676,16 @@ export const sendTeamVerificationEmails = async (
       })
       .where(eq(teamMembers.id, member.id));
 
-    try {
-      await sendVerificationEmail({
+    await enqueueEmailJob({
+      emailType: "verification",
+      recipient: member.email,
+      dedupeKey: `verification:${tokenHash}`,
+      payload: {
         email: member.email,
         name: member.fullName,
         verificationToken: token,
-      });
-    } catch (error) {
-      // One bad address shouldn't block verification emails to the rest
-      // of the team.
-      logger.error(
-        { err: error },
-        `Failed to send verification email to ${member.email}`
-      );
-    }
+      },
+    });
   }
 
   return {
@@ -721,15 +733,16 @@ export const resendVerificationEmail = async (email: string) => {
     })
     .where(eq(teamMembers.id, member.id));
 
-  try {
-    await sendVerificationEmail({
+  await enqueueEmailJob({
+    emailType: "verification",
+    recipient: member.email,
+    dedupeKey: `verification:${tokenHash}`,
+    payload: {
       email: member.email,
       name: member.fullName,
       verificationToken: token,
-    });
-  } catch (error) {
-    logger.error({ err: error }, "Failed to resend verification email");
-  }
+    },
+  });
 
   return genericResult;
 };
@@ -790,45 +803,96 @@ export const sendResumeLink = async (leaderEmail: string) => {
     return genericResult;
   }
 
-  // Store a fresh verification token on the leader row so it can be validated later
-  const token = generateVerificationToken();
-  const tokenHash = hashVerificationToken(token);
-  const expiresAt = new Date(
-    Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
-  ).toISOString();
+  // Mint (or reuse) a token for the leader row, and decide whether to send.
+  // Wrapped in a per-leader advisory lock so two near-simultaneous requests
+  // (double-click, a client retry) can't each mint a different token —
+  // without this, only the last write would stay valid and the other
+  // request's email would carry a dead link.
+  const minted = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${leader.id})`);
 
-  await db
-    .update(teamMembers)
-    .set({
-      emailVerificationTokenHash: tokenHash,
-      emailVerificationExpiresAt: expiresAt,
-    })
-    .where(eq(teamMembers.id, leader.id));
+    const [current] = await tx
+      .select({
+        emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
+      })
+      .from(teamMembers)
+      .where(eq(teamMembers.id, leader.id))
+      .limit(1);
+
+    if (
+      isTokenFreshlyMinted(
+        current?.emailVerificationExpiresAt,
+        VERIFICATION_EXPIRY_HOURS,
+        RESUME_TOKEN_REUSE_WINDOW_MS
+      )
+    ) {
+      // A near-simultaneous request already minted a live token and is (or
+      // just did) send its email — skip minting a second one. We don't have
+      // that token's plaintext (only its hash is stored), so there's
+      // nothing new to send either; the earlier request's email covers it.
+      return null;
+    }
+
+    const token = generateVerificationToken();
+    const tokenHash = hashVerificationToken(token);
+    const expiresAt = new Date(
+      Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+    ).toISOString();
+
+    await tx
+      .update(teamMembers)
+      .set({
+        emailVerificationTokenHash: tokenHash,
+        emailVerificationExpiresAt: expiresAt,
+      })
+      .where(eq(teamMembers.id, leader.id));
+
+    return { token, tokenHash };
+  });
+
+  if (!minted) {
+    return genericResult;
+  }
 
   if (team.status === "CONFIRMED") {
-    await sendRegistrationConfirmationEmail({
-      email: leader.email,
-      name: leader.fullName,
-      teamName: team.teamName,
-      resumeToken: token,
+    await enqueueEmailJob({
+      emailType: "registration_confirmed",
+      recipient: leader.email,
+      dedupeKey: `registration_confirmed:${minted.tokenHash}`,
+      payload: {
+        email: leader.email,
+        name: leader.fullName,
+        teamName: team.teamName,
+        resumeToken: minted.token,
+      },
     });
   } else if (team.status === "DRAFT") {
-    await sendConfirmRegistrationEmail({
-      email: leader.email,
-      name: leader.fullName,
-      teamName: team.teamName,
-      confirmToken: token,
+    await enqueueEmailJob({
+      emailType: "confirm_registration",
+      recipient: leader.email,
+      dedupeKey: `confirm_registration:${minted.tokenHash}`,
+      payload: {
+        email: leader.email,
+        name: leader.fullName,
+        teamName: team.teamName,
+        confirmToken: minted.token,
+      },
     });
   } else {
     // Only PENDING_PAYMENT remains at this point, and that status is now
     // exclusively reached via the admin's "select for Round 2" action — so
     // a leader resending their link here is asking for that same email again.
-    await sendRound2SelectionEmail({
-      email: leader.email,
-      name: leader.fullName,
-      teamName: team.teamName,
-      amount: REGISTRATION_FEE_RUPEES,
-      paymentToken: token,
+    await enqueueEmailJob({
+      emailType: "round2_selection",
+      recipient: leader.email,
+      dedupeKey: `round2_selection:${minted.tokenHash}`,
+      payload: {
+        email: leader.email,
+        name: leader.fullName,
+        teamName: team.teamName,
+        amount: REGISTRATION_FEE_RUPEES,
+        paymentToken: minted.token,
+      },
     });
   }
 

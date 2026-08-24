@@ -7,6 +7,7 @@ export const roundStatus = pgEnum("round_status", ['UPCOMING', 'ACTIVE', 'COMPLE
 export const roundType = pgEnum("round_type", ['ONLINE', 'OFFLINE'])
 export const teamMemberRole = pgEnum("team_member_role", ['LEADER', 'MEMBER'])
 export const teamStatus = pgEnum("team_status", ['DRAFT', 'PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED'])
+export const emailJobStatus = pgEnum("email_job_status", ['pending', 'processing', 'sent', 'retrying', 'failed'])
 
 
 export const domains = pgTable("domains", {
@@ -187,4 +188,35 @@ export const rounds = pgTable("rounds", {
 	unique("rounds_round_number_key").on(table.roundNumber),
 	check("rounds_dates_check", sql`(end_at IS NULL) OR (start_at IS NULL) OR (end_at > start_at)`),
 	check("rounds_number_check", sql`round_number > 0`),
+]);
+
+// Lightweight Postgres-backed email queue: registration/verification/payment
+// flows insert a row here (fast, in-transaction-safe) instead of awaiting the
+// Resend API directly. A background worker (see email-queue.service.ts)
+// claims and sends jobs on its own schedule, so an email-provider outage can
+// never fail or delay the request that recorded the job.
+export const emailJobs = pgTable("email_jobs", {
+	id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity({ name: "email_jobs_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	// Uniquely identifies "this exact email for this exact event" (e.g.
+	// `payment_confirmation:<teamId>`) so a duplicate enqueue attempt —
+	// concurrent requests, a retried webhook, a re-run of the same business
+	// logic — is a no-op insert (ON CONFLICT DO NOTHING) instead of a second
+	// email.
+	dedupeKey: varchar("dedupe_key", { length: 200 }).notNull(),
+	emailType: varchar("email_type", { length: 50 }).notNull(),
+	recipient: varchar({ length: 255 }).notNull(),
+	payload: text().notNull(),
+	status: emailJobStatus().default('pending').notNull(),
+	attempts: smallint().default(0).notNull(),
+	maxAttempts: smallint("max_attempts").default(6).notNull(),
+	nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	lastError: text("last_error"),
+	lockedAt: timestamp("locked_at", { withTimezone: true, mode: 'string' }),
+	lockedBy: varchar("locked_by", { length: 100 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_email_jobs_claim").using("btree", table.status.asc().nullsLast().op("enum_ops"), table.nextAttemptAt.asc().nullsLast().op("timestamptz_ops")),
+	unique("email_jobs_dedupe_key_key").on(table.dedupeKey),
 ]);

@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import crypto from "crypto";
 import { db } from "../db";
 import { payments, teamMembers, teams } from "../db/migrations/schema";
 import { hashVerificationToken } from "../lib/verification-token";
@@ -10,8 +11,13 @@ import {
   verifyPaymentSignature,
   verifyWebhookSignature,
 } from "../lib/razorpay";
-import { sendPaymentConfirmationEmail } from "./email.service";
+import { enqueueEmailJob } from "./email-queue.service";
 import { logger } from "../lib/logger";
+
+// Date.now() alone has only millisecond resolution — under a launch spike,
+// two concurrent payment-order creations landing in the same millisecond
+// would collide on the payments.payment_id unique constraint.
+const randomSuffix = () => crypto.randomInt(100000, 999999);
 
 const resolveLeaderTeamByToken = async (token: string) => {
   const tokenHash = hashVerificationToken(token);
@@ -89,7 +95,7 @@ export const createPaymentOrder = async (token: string) => {
     const [inserted] = await db
       .insert(payments)
       .values({
-        paymentId: `TEMP-${Date.now()}`,
+        paymentId: `TEMP-${Date.now()}-${randomSuffix()}`,
         teamId: team.id,
         razorpayOrderId: order.id,
         amount: REGISTRATION_FEE_RUPEES,
@@ -177,39 +183,48 @@ export const verifyAndConfirmPayment = async (input: {
     logger.error({ err: error }, "Failed to fetch payment method from Razorpay");
   }
 
-  await db
-    .update(payments)
-    .set({
-      status: "SUCCESS",
-      razorpayPaymentId: input.razorpayPaymentId,
-      razorpaySignature: input.razorpaySignature,
-      method,
-      paidAt: new Date().toISOString(),
-    })
-    .where(eq(payments.id, payment.id));
+  // Payment-row update, team-status transition, and email-job enqueue all
+  // commit together — if the process died between separate statements here,
+  // a team could be stuck at PENDING_PAYMENT forever with payments.status
+  // already SUCCESS and no automatic recovery.
+  const transitioned = await db.transaction(async (tx) => {
+    await tx
+      .update(payments)
+      .set({
+        status: "SUCCESS",
+        razorpayPaymentId: input.razorpayPaymentId,
+        razorpaySignature: input.razorpaySignature,
+        method,
+        paidAt: new Date().toISOString(),
+      })
+      .where(eq(payments.id, payment.id));
 
-  // .returning() here is the atomic signal that THIS call performed the
-  // transition (guards against the client-side verify call and the webhook
-  // racing each other) — only the caller that actually flips the status
-  // sends the one confirmation email, to the leader only.
-  const [transitioned] = await db
-    .update(teams)
-    .set({ status: "CONFIRMED" })
-    .where(and(eq(teams.id, team.id), eq(teams.status, "PENDING_PAYMENT")))
-    .returning({ id: teams.id });
+    // .returning() here is the atomic signal that THIS call performed the
+    // transition (guards against the client-side verify call and the webhook
+    // racing each other) — only the caller that actually flips the status
+    // enqueues the one confirmation email, to the leader only.
+    const [row] = await tx
+      .update(teams)
+      .set({ status: "CONFIRMED" })
+      .where(and(eq(teams.id, team.id), eq(teams.status, "PENDING_PAYMENT")))
+      .returning({ id: teams.id });
+
+    return row;
+  });
 
   if (transitioned) {
-    try {
-      await sendPaymentConfirmationEmail({
+    await enqueueEmailJob({
+      emailType: "payment_confirmation",
+      recipient: leader.email,
+      dedupeKey: `payment_confirmation:${team.id}`,
+      payload: {
         email: leader.email,
         name: leader.fullName,
         teamName: team.teamName,
         teamId: team.teamId,
         amount: REGISTRATION_FEE_RUPEES,
-      });
-    } catch (error) {
-      logger.error({ err: error }, "Failed to send payment confirmation email");
-    }
+      },
+    });
   }
 
   return { alreadyConfirmed: false };
@@ -265,25 +280,34 @@ export const handleRazorpayWebhook = async (
     // guarded to the first-time transition.
     const alreadyConfirmed = payment.status === "SUCCESS";
 
-    await db
-      .update(payments)
-      .set({
-        razorpayPaymentId: paymentEntity.id,
-        method: paymentEntity.method ?? null,
-        ...(alreadyConfirmed ? {} : { status: "SUCCESS", paidAt: new Date().toISOString() }),
-      })
-      .where(eq(payments.id, payment.id));
+    // Payment-row update, team-status transition, and email-job enqueue all
+    // commit together (see the same pattern/rationale in
+    // verifyAndConfirmPayment above). The webhook stays fast either way —
+    // this is all DB work, no external calls, and the email itself is sent
+    // later by the background worker, never awaited here.
+    const transitioned = await db.transaction(async (tx) => {
+      await tx
+        .update(payments)
+        .set({
+          razorpayPaymentId: paymentEntity.id,
+          method: paymentEntity.method ?? null,
+          ...(alreadyConfirmed ? {} : { status: "SUCCESS", paidAt: new Date().toISOString() }),
+        })
+        .where(eq(payments.id, payment.id));
 
-    // The WHERE guard below is the atomic, race-safe signal for "did THIS
-    // call perform the transition" (it's what decides whether the client-side
-    // verify call or this webhook wins the race) — always attempt it rather
-    // than pre-gating on `alreadyConfirmed`, which reflects the payments
-    // table and could be a beat out of sync with the teams table.
-    const [transitioned] = await db
-      .update(teams)
-      .set({ status: "CONFIRMED" })
-      .where(and(eq(teams.id, payment.teamId), eq(teams.status, "PENDING_PAYMENT")))
-      .returning({ id: teams.id, teamName: teams.teamName, teamId: teams.teamId });
+      // The WHERE guard below is the atomic, race-safe signal for "did THIS
+      // call perform the transition" (it's what decides whether the client-side
+      // verify call or this webhook wins the race) — always attempt it rather
+      // than pre-gating on `alreadyConfirmed`, which reflects the payments
+      // table and could be a beat out of sync with the teams table.
+      const [row] = await tx
+        .update(teams)
+        .set({ status: "CONFIRMED" })
+        .where(and(eq(teams.id, payment.teamId), eq(teams.status, "PENDING_PAYMENT")))
+        .returning({ id: teams.id, teamName: teams.teamName, teamId: teams.teamId });
+
+      return row;
+    });
 
     if (transitioned) {
       const [leader] = await db
@@ -293,17 +317,18 @@ export const handleRazorpayWebhook = async (
         .limit(1);
 
       if (leader) {
-        try {
-          await sendPaymentConfirmationEmail({
+        await enqueueEmailJob({
+          emailType: "payment_confirmation",
+          recipient: leader.email,
+          dedupeKey: `payment_confirmation:${transitioned.id}`,
+          payload: {
             email: leader.email,
             name: leader.fullName,
             teamName: transitioned.teamName,
             teamId: transitioned.teamId,
             amount: payment.amount,
-          });
-        } catch (error) {
-          logger.error({ err: error }, "Failed to send payment confirmation email");
-        }
+          },
+        });
       }
     }
   } else if (event.event === "payment.failed") {
