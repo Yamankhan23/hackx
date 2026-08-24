@@ -27,6 +27,8 @@ import {
   createDomainSchema,
   createProblemStatementSchema,
   createRoundSchema,
+  idParamSchema,
+  paginationQuerySchema,
   paymentStatusValues,
   selectTeamsForRound2Schema,
   teamStatusValues,
@@ -44,11 +46,34 @@ import { selectTeamsForRound2 as selectTeamsForRound2Service } from "../services
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
-const pagination = (req: Request) => {
-  const page = Math.max(Number(req.query.page ?? 1), 1);
-  const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 100);
-  const offset = (page - 1) * limit;
-  return { page, limit, offset };
+const pagination = (
+  req: Request,
+  res: Response
+): { page: number; limit: number; offset: number } | null => {
+  const validation = paginationQuerySchema.safeParse(req.query);
+  if (!validation.success) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid pagination parameters",
+      errors: validation.error.issues,
+    });
+    return null;
+  }
+  const { page, limit } = validation.data;
+  return { page, limit, offset: (page - 1) * limit };
+};
+
+const parseIdParam = (
+  req: Request,
+  res: Response,
+  paramName: string = "id"
+): number | null => {
+  const validation = idParamSchema.safeParse({ id: req.params[paramName] });
+  if (!validation.success) {
+    res.status(400).json({ success: false, message: "Invalid id parameter" });
+    return null;
+  }
+  return validation.data.id;
 };
 
 export const adminLogin = async (req: Request, res: Response): Promise<void> => {
@@ -195,7 +220,9 @@ export const getDashboard = async (_req: Request, res: Response): Promise<void> 
 
 export const getTeams = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { page, limit, offset } = pagination(req);
+    const paginationResult = pagination(req, res);
+    if (!paginationResult) return;
+    const { page, limit, offset } = paginationResult;
     const search = String(req.query.search ?? "").trim();
     const status = String(req.query.status ?? "").trim();
 
@@ -309,7 +336,8 @@ export const updateTeamStatus = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db
       .update(teams)
       .set({ status: validation.data.status })
@@ -351,7 +379,9 @@ export const selectTeamsForRound2 = async (req: Request, res: Response): Promise
 
 export const getParticipants = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { page, limit, offset } = pagination(req);
+    const paginationResult = pagination(req, res);
+    if (!paginationResult) return;
+    const { page, limit, offset } = paginationResult;
     const search = String(req.query.search ?? "").trim();
     const teamId = String(req.query.teamId ?? "").trim();
     const whereClause = and(
@@ -397,7 +427,8 @@ export const getParticipants = async (req: Request, res: Response): Promise<void
 
 export const getParticipantById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [participant] = await db
       .select({
         id: teamMembers.id,
@@ -444,7 +475,9 @@ const paymentSelection = {
 
 export const getPayments = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { page, limit, offset } = pagination(req);
+    const paginationResult = pagination(req, res);
+    if (!paginationResult) return;
+    const { page, limit, offset } = paginationResult;
     const search = String(req.query.search ?? "").trim();
     const status = String(req.query.status ?? "").trim();
 
@@ -492,7 +525,8 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
 
 export const getPaymentById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [payment] = await db
       .select(paymentSelection)
       .from(payments)
@@ -542,7 +576,8 @@ export const updateDomain = async (req: Request, res: Response): Promise<void> =
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(domains).set(validation.data).where(eq(domains.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Domain not found" });
@@ -562,7 +597,8 @@ export const toggleDomainStatus = async (req: Request, res: Response): Promise<v
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(domains).set({ isActive: validation.data.isActive }).where(eq(domains.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Domain not found" });
@@ -607,7 +643,8 @@ export const updateCollege = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(colleges).set(validation.data).where(eq(colleges.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "College not found" });
@@ -627,7 +664,8 @@ export const toggleCollegeStatus = async (req: Request, res: Response): Promise<
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(colleges).set({ isActive: validation.data.isActive }).where(eq(colleges.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "College not found" });
@@ -672,7 +710,8 @@ export const updateRound = async (req: Request, res: Response): Promise<void> =>
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(rounds).set(validation.data).where(eq(rounds.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Round not found" });
@@ -692,7 +731,8 @@ export const toggleRoundStatus = async (req: Request, res: Response): Promise<vo
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(rounds).set({ status: validation.data.status }).where(eq(rounds.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Round not found" });
@@ -749,7 +789,8 @@ export const updateProblemStatement = async (req: Request, res: Response): Promi
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db.update(problemStatements).set(validation.data).where(eq(problemStatements.id, id)).returning();
     if (!updated) {
       res.status(404).json({ success: false, message: "Problem statement not found" });
@@ -769,7 +810,8 @@ export const publishProblemStatement = async (req: Request, res: Response): Prom
       res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
       return;
     }
-    const id = Number(req.params.id);
+    const id = parseIdParam(req, res);
+    if (id === null) return;
     const [updated] = await db
       .update(problemStatements)
       .set({ isPublished: validation.data.isPublished })
