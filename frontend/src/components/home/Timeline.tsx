@@ -6,20 +6,20 @@ const steps = [
   {
     phase: "Phase 01",
     title: "Registration",
-    date: "Opens 31 July 2026",
-    note: "Deadline: To Be Announced",
+    date: "Opens 22 August 2026",
+    note: "Closes before Round 1 begins",
     desc: "Register your team and pick your domain to lock in your spot.",
   },
   {
     phase: "Phase 02",
     title: "Round 1",
-    date: "August 2026",
+    date: "16 September 2026",
     desc: "First online round — submit your initial idea and approach.",
   },
   {
     phase: "Phase 03",
     title: "Round 2",
-    date: "22 August 2026",
+    date: "22 September 2026",
     desc: "Second online round — refine and present your solution.",
   },
   {
@@ -31,7 +31,7 @@ const steps = [
   {
     phase: "Phase 05",
     title: "Grand Finale",
-    date: "6 September 2026",
+    date: "27 September 2026",
     desc: "Offline finale in Mumbai — build live and compete for the crown.",
     highlight: true,
   },

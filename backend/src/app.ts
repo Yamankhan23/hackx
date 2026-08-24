@@ -9,6 +9,7 @@ import collegeRoutes from "./routes/college.routes";
 import adminRoutes from "./routes/admin.routes";
 import { razorpayWebhookController } from "./controllers/payment.controller";
 import { globalLimiter } from "./lib/rate-limit";
+import { httpLogger } from "./lib/http-logger";
 
 const app = express();
 
@@ -18,6 +19,11 @@ const app = express();
 // tell users apart — trusting exactly 1 hop fixes both without blindly
 // trusting an arbitrary client-supplied header chain.
 app.set("trust proxy", 1);
+
+// Logs every request as it finishes (method, url, status, latency, request
+// id) — placed first so it wraps every route, including the raw-body
+// webhook below.
+app.use(httpLogger);
 
 app.use(helmet());
 
@@ -44,26 +50,6 @@ app.use(globalLimiter);
 
 app.use(express.json());
 
-app.use((req, res, next) => {
-  const start = Date.now();
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} → ${res.statusCode} (${duration}ms)`
-    );
-
-    if (res.statusCode >= 400) {
-      console.error(
-        `Request failed: ${req.method} ${req.originalUrl}`
-      );
-    }
-  });
-
-  next();
-});
-
 app.use("/api/health", healthRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/domains", domainRoutes);
@@ -79,7 +65,7 @@ app.use((req, res) => {
 app.use(
   (err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) return next(err);
-    console.error(`Unhandled error on ${req.method} ${req.originalUrl}:`, err);
+    req.log.error({ err }, `Unhandled error on ${req.method} ${req.originalUrl}`);
     res.status(500).json({ success: false, message: "Something went wrong. Please try again." });
   }
 );

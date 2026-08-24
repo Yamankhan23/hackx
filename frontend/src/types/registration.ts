@@ -45,6 +45,7 @@ export type RegisterTeamResponse = {
   registrationId: string;
   teamName: string;
   status: string;
+  resumeToken: string;
   members: Array<{
     name: string;
     email: string;
@@ -91,6 +92,16 @@ export type ResumeDraft = {
   domainName: string;
   declarationAccepted: boolean;
   members: ResumeDraftMember[];
+};
+
+export type ConfirmRegistrationResponse = {
+  alreadyConfirmed: boolean;
+  team: {
+    teamId: string;
+    registrationId: string | null;
+    teamName: string;
+    status: string;
+  };
 };
 
 export type ResumeApplicationResponse = {

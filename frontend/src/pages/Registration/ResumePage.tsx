@@ -131,7 +131,7 @@ export function ResumePage() {
     );
   }
 
-  // Draft ready to reopen
+  // Draft or confirmed team, ready to view/edit
   const draft = data.draft!;
 
   return (
@@ -140,8 +140,14 @@ export function ResumePage() {
         <Eyebrow>Resume Application</Eyebrow>
         <h1 className="mt-2 text-2xl font-semibold">Welcome back!</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Your draft for <span className="font-medium text-white">{draft.teamName}</span> is ready.
+          <span className="font-medium text-white">{draft.teamName}</span> is ready.
         </p>
+
+        {data.team.status === "DRAFT" && (
+          <p className="mt-3 rounded-2xl border border-purple-500/25 bg-purple-500/10 p-3 text-sm text-purple-200">
+            Check your email for a confirmation link to finalize your team's registration.
+          </p>
+        )}
 
         <div className="mt-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm text-slate-300">
           <div className="flex items-center justify-between">
@@ -154,7 +160,7 @@ export function ResumePage() {
           </div>
           <div className="flex items-center justify-between">
             <span>Status</span>
-            <span className="font-medium text-purple-200">DRAFT</span>
+            <span className="font-medium text-purple-200">{data.team.status}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>Members</span>
@@ -182,7 +188,7 @@ export function ResumePage() {
           to={`/register?token=${encodeURIComponent(token)}`}
           className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
         >
-          Reopen Draft Form
+          Edit Team Details
         </Link>
       </Card>
     </Shell>

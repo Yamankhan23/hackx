@@ -215,26 +215,16 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
 
     try {
       if (resumeToken && resumeTeamId) {
-        // Update the existing draft (no duplicate created). Uses the
+        // Update the existing team (no duplicate created). Uses the
         // resume token (not the guessable teamId) so only whoever holds
-        // the emailed link can edit this team's draft.
+        // the emailed link can edit this team.
         await updateTeam(resumeToken, buildPayload(values));
-        toast.success("Draft saved.");
-        navigate("/registration/verification", {
-          state: {
-            teamId: resumeTeamId,
-            teamName: values.teamName,
-          },
-        });
+        toast.success("Changes saved.");
+        navigate(`/resume?token=${encodeURIComponent(resumeToken)}`);
       } else {
         const response = await registerTeam(buildPayload(values));
-        toast.success("Registration submitted! Check your email to verify.");
-        navigate("/registration/verification", {
-          state: {
-            teamId: response.data.teamId,
-            teamName: response.data.teamName,
-          },
-        });
+        toast.success("Registration submitted! Check your email to confirm your spot.");
+        navigate(`/resume?token=${encodeURIComponent(response.data.resumeToken)}`);
       }
     } catch (error) {
       setGeneralError(getApiErrorMessage(error, "Failed to save team registration."));
@@ -260,11 +250,11 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
 
           <div className="mt-5">
             <h2 className="text-2xl font-semibold">
-              {resumeDraft ? "Continue your team registration" : "Create your team"}
+              {resumeDraft ? "Edit your team registration" : "Create your team"}
             </h2>
             <p className="mt-1 text-sm text-slate-400">
               {resumeDraft
-                ? `Editing draft for "${resumeDraft.teamName}".`
+                ? `Editing "${resumeDraft.teamName}".`
                 : "Register your team for MUSA CodeX 2026."}
             </p>
           </div>
@@ -359,7 +349,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
                     {loading
                       ? "Saving..."
                       : resumeDraft
-                        ? "Save & Continue"
+                        ? "Save Changes"
                         : "Complete Registration"}
                   </button>
                 )}

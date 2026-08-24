@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 
 const domains = [
   {
-    name: "AI & Machine Learning",
+    name: "Artificial Intelligence & Machine Learning",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <circle cx="12" cy="12" r="3" />
@@ -13,7 +13,7 @@ const domains = [
     ),
   },
   {
-    name: "Cyber Security",
+    name: "Cybersecurity & Digital Safety",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" strokeLinecap="round" strokeLinejoin="round" />
@@ -30,7 +30,7 @@ const domains = [
     ),
   },
   {
-    name: "Smart Education",
+    name: "Education & Skill Development",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <path d="M22 10 12 5 2 10l10 5 10-5zM6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -38,7 +38,7 @@ const domains = [
     ),
   },
   {
-    name: "Smart Cities & Urban Development",
+    name: "Smart Cities & Urban Technology",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1" strokeLinecap="round" strokeLinejoin="round" />
@@ -46,7 +46,7 @@ const domains = [
     ),
   },
   {
-    name: "Sustainability & Climate Tech",
+    name: "Sustainability & Climate Technology",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-2.5-5.5C14.5 7.5 12 5 12 2c-5 4-8 8.5-8 13a7 7 0 0 0 8 7z" strokeLinecap="round" strokeLinejoin="round" />
@@ -54,7 +54,7 @@ const domains = [
     ),
   },
   {
-    name: "Agriculture & Food Technology",
+    name: "AgriTech & Food Technology",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <path d="M7 20h10M10 20c0-4 1-7 5-9M12 20c0-5 2-8 6-10M7 20c0-3 1-5 3-7" strokeLinecap="round" strokeLinejoin="round" />
@@ -62,7 +62,7 @@ const domains = [
     ),
   },
   {
-    name: "FinTech & Digital Payments",
+    name: "FinTech & Digital Economy",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <rect x="2" y="5" width="20" height="14" rx="2" />
@@ -71,7 +71,7 @@ const domains = [
     ),
   },
   {
-    name: "IoT & Smart Automation",
+    name: "IoT, Automation & Smart Systems",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
         <circle cx="12" cy="12" r="3" />

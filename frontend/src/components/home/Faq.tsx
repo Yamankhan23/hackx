@@ -18,11 +18,11 @@ const faqs = [
   },
   {
     q: "What is the registration fee?",
-    a: "The registration fee is ₹400 per team. The registration deadline will be announced soon.",
+    a: "There's no registration fee — Round 1 is completely free to enter. Make sure your team registers before Round 1 begins on 16 September 2026.",
   },
   {
     q: "How does the competition work?",
-    a: "It's a five-stage journey: Registration → Round 1 → Round 2 → Top 15 → Grand Finale. Registration opens 31 July 2026, Round 1 is in August 2026, Round 2 is on 22 August 2026, and the Grand Finale is on 6 September 2026.",
+    a: "It's a five-stage journey: Registration → Round 1 → Round 2 → Top 15 → Grand Finale. Registration opens 22 August 2026, Round 1 is on 16 September 2026, Round 2 is on 22 September 2026, and the Grand Finale is on 27 September 2026.",
   },
   {
     q: "How many teams qualify for the Grand Finale?",
@@ -30,7 +30,7 @@ const faqs = [
   },
   {
     q: "What can I win?",
-    a: "The 1st place team wins a trophy and ₹25,000 cash, with 2nd and 3rd place teams winning trophies and cash prizes (amounts to be announced). Every participant receives a participation certificate.",
+    a: "The prize pool totals ₹50,000: 1st place wins a trophy and ₹25,000 cash, 2nd place wins a trophy and ₹15,000, and 3rd place wins a trophy and ₹10,000. There's also a special Best Approach Award, and every participant receives a participation certificate.",
   },
   {
     q: "When will problem statements be released?",

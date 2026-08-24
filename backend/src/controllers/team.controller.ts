@@ -6,6 +6,7 @@ import {
   updateTeamSchema,
 } from "../validators/team.validator";
 import {
+  confirmRegistration,
   registerTeam,
   resendVerificationEmail,
   resumeApplication,
@@ -26,8 +27,7 @@ export const registerTeamController = async (
 
     return res.status(201).json({
       success: true,
-      message:
-        "Team registration created successfully. All members must verify their email addresses to continue.",
+      message: "Team registration submitted. Check your email to confirm your spot.",
       data: result,
     });
   } catch (error) {
@@ -39,7 +39,7 @@ export const registerTeamController = async (
       });
     }
 
-    console.error("Team registration error:", error);
+    req.log.error({ err: error }, "Team registration error");
 
     const message =
       friendlyDbErrorMessage(error) ??
@@ -97,7 +97,7 @@ export const verifyEmailController = async (
       }
     }
 
-    console.error("Email verification error:", error);
+    req.log.error({ err: error }, "Email verification error");
     return res.status(500).json({
       success: false,
       code: "SERVER_ERROR",
@@ -127,7 +127,7 @@ export const resendVerificationEmailController = async (
       });
     }
 
-    console.error("Resend verification error:", error);
+    req.log.error({ err: error }, "Resend verification error");
 
     return res.status(400).json({
       success: false,
@@ -158,7 +158,7 @@ export const continueApplicationController = async (
       });
     }
 
-    console.error("Continue application error:", error);
+    req.log.error({ err: error }, "Continue application error");
 
     return res.status(400).json({
       success: false,
@@ -191,7 +191,7 @@ export const resumeApplicationController = async (
       data: result,
     });
   } catch (error) {
-    console.error("Resume application error:", error);
+    req.log.error({ err: error }, "Resume application error");
 
     return res.status(404).json({
       success: false,
@@ -199,6 +199,59 @@ export const resumeApplicationController = async (
         error instanceof Error
           ? error.message
           : "Failed to load application draft",
+    });
+  }
+};
+
+export const confirmRegistrationController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { token } = req.params;
+
+    if (typeof token !== "string" || !token) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid confirmation token",
+      });
+    }
+
+    const result = await confirmRegistration(token);
+
+    return res.status(200).json({
+      success: true,
+      message: result.alreadyConfirmed
+        ? "This registration has already been confirmed."
+        : "Registration confirmed successfully.",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "TOKEN_EXPIRED") {
+        return res.status(410).json({
+          success: false,
+          code: "TOKEN_EXPIRED",
+          message: "This confirmation link has expired. Please request a new one.",
+        });
+      }
+      if (error.message === "INVALID_TOKEN") {
+        return res.status(404).json({
+          success: false,
+          code: "INVALID_TOKEN",
+          message: "This confirmation link is invalid.",
+        });
+      }
+    }
+
+    req.log.error({ err: error }, "Confirm registration error");
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to confirm registration",
     });
   }
 };
@@ -235,7 +288,7 @@ export const updateTeamController = async (
       });
     }
 
-    console.error("Update team error:", error);
+    req.log.error({ err: error }, "Update team error");
 
     const friendlyMessage = friendlyDbErrorMessage(error);
 

@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 
 const infoBadges = [
-  { label: "Entry Fee", value: "₹400 / team" },
+  { label: "Entry Fee", value: "Free" },
   { label: "Team Size", value: "3–4 members" },
-  { label: "Grand Finale", value: "6 September 2026" },
+  { label: "Grand Finale", value: "27 September 2026" },
   { label: "Location", value: "Mumbai" },
 ];
 

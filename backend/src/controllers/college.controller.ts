@@ -24,7 +24,7 @@ export const getColleges = async (
       data: collegeList,
     });
   } catch (error) {
-    console.error("Error fetching colleges:", error);
+    _req.log.error({ err: error }, "Error fetching colleges");
 
     res.status(500).json({
       success: false,

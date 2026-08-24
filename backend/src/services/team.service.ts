@@ -15,10 +15,13 @@ import {
   hashVerificationToken,
 } from "../lib/verification-token";
 import { REGISTRATION_FEE_RUPEES, VERIFICATION_EXPIRY_HOURS } from "../lib/constants";
+import { logger } from "../lib/logger";
 
 import {
-  sendApplicationResumeEmail,
+  sendConfirmRegistrationEmail,
   sendPaymentLinkEmail,
+  sendRegistrationConfirmationEmail,
+  sendRound2SelectionEmail,
   sendVerificationEmail,
 } from "./email.service";
 
@@ -164,6 +167,9 @@ export const registerTeam = async (input: RegisterTeamInput) => {
         teamId: temporaryTeamId,
         teamName: input.teamName.trim(),
         domainId: input.domainId,
+        // Round 1 has no per-member email-verification or payment gate, but
+        // the team leader must still confirm via the emailed link before
+        // the team counts as CONFIRMED.
         status: "DRAFT",
         declarationAccepted: true,
         declarationAcceptedAt: new Date().toISOString(),
@@ -190,27 +196,39 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     // 5. Create Team Members
     // ---------------------------------------------------------
 
-    await tx.insert(teamMembers).values(
-      input.members.map((member) => ({
-        teamId: team.id,
+    const insertedMembers = await tx
+      .insert(teamMembers)
+      .values(
+        input.members.map((member) => ({
+          teamId: team.id,
 
-        role: member.role,
+          role: member.role,
 
-        fullName: member.fullName.trim(),
+          fullName: member.fullName.trim(),
 
-        email: member.email.toLowerCase(),
+          email: member.email.toLowerCase(),
 
-        mobileNumber: member.mobileNumber.trim(),
+          mobileNumber: member.mobileNumber.trim(),
 
-        collegeId: resolvedCollegeIds.get(member.email)!,
+          collegeId: resolvedCollegeIds.get(member.email)!,
 
-        region: member.region.trim(),
+          region: member.region.trim(),
 
-        branch: member.branch.trim(),
+          branch: member.branch.trim(),
 
-        yearOfStudy: member.yearOfStudy,
-      }))
-    );
+          yearOfStudy: member.yearOfStudy,
+        }))
+      )
+      .returning({
+        id: teamMembers.id,
+        role: teamMembers.role,
+        email: teamMembers.email,
+        fullName: teamMembers.fullName,
+      });
+
+    const leaderMember = insertedMembers.find(
+      (member) => member.role === "LEADER"
+    )!;
 
     // ---------------------------------------------------------
     // 6. Return clean response
@@ -221,6 +239,7 @@ export const registerTeam = async (input: RegisterTeamInput) => {
       registrationId,
       teamName: team.teamName,
       status: team.status,
+      leaderMember,
 
       members: input.members.map((member) => ({
         name: member.fullName,
@@ -230,19 +249,220 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     };
   });
 
-  // Send verification emails only after the transaction has committed —
-  // an email-provider hiccup must not roll back an otherwise-successful
-  // registration.
+  // Mint a token for the leader and email ONLY the leader — done after the
+  // transaction has committed so an email-provider hiccup can't roll back
+  // an otherwise-successful registration. The same token both confirms the
+  // registration (via /confirm) and grants edit access (via /resume), so no
+  // other team member ever needs an email of their own.
+  const resumeToken = generateVerificationToken();
+  const resumeTokenHash = hashVerificationToken(resumeToken);
+  const expiresAt = new Date(
+    Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+  ).toISOString();
+
+  await db
+    .update(teamMembers)
+    .set({
+      emailVerificationTokenHash: resumeTokenHash,
+      emailVerificationExpiresAt: expiresAt,
+    })
+    .where(eq(teamMembers.id, result.leaderMember.id));
+
   try {
-    await sendTeamVerificationEmails(result.teamId);
+    await sendConfirmRegistrationEmail({
+      email: result.leaderMember.email,
+      name: result.leaderMember.fullName,
+      teamName: result.teamName,
+      confirmToken: resumeToken,
+    });
   } catch (error) {
-    console.error(
-      "Failed to send verification emails after registration:",
-      error
-    );
+    logger.error({ err: error }, "Failed to send confirmation email");
   }
 
-  return result;
+  const { leaderMember, ...response } = result;
+
+  return { ...response, resumeToken };
+};
+
+// Leader clicks the emailed confirm link — the only thing that moves a team
+// from DRAFT to CONFIRMED now that Round 1 has no per-member verification or
+// payment gate.
+export const confirmRegistration = async (token: string) => {
+  const tokenHash = hashVerificationToken(token);
+
+  const [leader] = await db
+    .select({
+      id: teamMembers.id,
+      teamId: teamMembers.teamId,
+      emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
+    })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.emailVerificationTokenHash, tokenHash),
+        eq(teamMembers.role, "LEADER")
+      )
+    )
+    .limit(1);
+
+  if (!leader) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (
+    leader.emailVerificationExpiresAt &&
+    new Date(leader.emailVerificationExpiresAt).getTime() < Date.now()
+  ) {
+    throw new Error("TOKEN_EXPIRED");
+  }
+
+  const [team] = await db
+    .select({
+      id: teams.id,
+      teamId: teams.teamId,
+      registrationId: teams.registrationId,
+      teamName: teams.teamName,
+      status: teams.status,
+    })
+    .from(teams)
+    .where(eq(teams.id, leader.teamId))
+    .limit(1);
+
+  if (!team) {
+    throw new Error("Team not found");
+  }
+
+  if (team.status === "CONFIRMED") {
+    // Idempotent repeat hit (e.g. an email client's link-safety scanner
+    // pre-fetching the link) — resolve as success instead of erroring on
+    // the user's real click.
+    return { team, alreadyConfirmed: true };
+  }
+
+  if (team.status !== "DRAFT") {
+    throw new Error("This registration can no longer be confirmed.");
+  }
+
+  const [confirmed] = await db
+    .update(teams)
+    .set({ status: "CONFIRMED" })
+    .where(and(eq(teams.id, team.id), eq(teams.status, "DRAFT")))
+    .returning({
+      teamId: teams.teamId,
+      registrationId: teams.registrationId,
+      teamName: teams.teamName,
+      status: teams.status,
+    });
+
+  return { team: confirmed ?? { ...team, status: "CONFIRMED" }, alreadyConfirmed: false };
+};
+
+// Admin bulk action: advance a batch of Round-1-confirmed teams to Round 2.
+// Reuses the existing PENDING_PAYMENT -> Razorpay -> CONFIRMED flow — the
+// difference is only in who triggers it and what the leader is told. Each
+// team is handled independently so one bad email address or a team that's
+// no longer CONFIRMED doesn't stop the rest of a 50+ team batch.
+export const selectTeamsForRound2 = async (teamIds: number[]) => {
+  const rows = await db
+    .select({
+      id: teams.id,
+      teamId: teams.teamId,
+      teamName: teams.teamName,
+      status: teams.status,
+    })
+    .from(teams)
+    .where(inArray(teams.id, teamIds));
+
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+
+  const selected: { teamId: string; teamName: string }[] = [];
+  const skipped: { teamId: number | string; teamName?: string; reason: string }[] = [];
+  const failed: { teamId: string; teamName: string; reason: string }[] = [];
+
+  for (const id of teamIds) {
+    const team = rowsById.get(id);
+
+    if (!team) {
+      skipped.push({ teamId: id, reason: "Team not found" });
+      continue;
+    }
+
+    if (team.status !== "CONFIRMED") {
+      skipped.push({
+        teamId: team.teamId,
+        teamName: team.teamName,
+        reason: `Status is ${team.status}, not CONFIRMED`,
+      });
+      continue;
+    }
+
+    try {
+      const [leader] = await db
+        .select({
+          id: teamMembers.id,
+          email: teamMembers.email,
+          fullName: teamMembers.fullName,
+        })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.role, "LEADER")))
+        .limit(1);
+
+      if (!leader) {
+        failed.push({ teamId: team.teamId, teamName: team.teamName, reason: "Leader not found" });
+        continue;
+      }
+
+      // Guarded by `status = 'CONFIRMED'` so a concurrent change (e.g. an
+      // admin cancelling the team in another tab) doesn't get clobbered.
+      const [transitioned] = await db
+        .update(teams)
+        .set({ status: "PENDING_PAYMENT" })
+        .where(and(eq(teams.id, team.id), eq(teams.status, "CONFIRMED")))
+        .returning({ id: teams.id });
+
+      if (!transitioned) {
+        failed.push({
+          teamId: team.teamId,
+          teamName: team.teamName,
+          reason: "Status changed before it could be updated",
+        });
+        continue;
+      }
+
+      const token = generateVerificationToken();
+      const tokenHash = hashVerificationToken(token);
+      const expiresAt = new Date(
+        Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
+      ).toISOString();
+
+      await db
+        .update(teamMembers)
+        .set({
+          emailVerificationTokenHash: tokenHash,
+          emailVerificationExpiresAt: expiresAt,
+        })
+        .where(eq(teamMembers.id, leader.id));
+
+      await sendRound2SelectionEmail({
+        email: leader.email,
+        name: leader.fullName,
+        teamName: team.teamName,
+        amount: REGISTRATION_FEE_RUPEES,
+        paymentToken: token,
+      });
+
+      selected.push({ teamId: team.teamId, teamName: team.teamName });
+    } catch (error) {
+      logger.error({ err: error }, `Failed to select team ${team.teamId} for Round 2`);
+      failed.push({
+        teamId: team.teamId,
+        teamName: team.teamName,
+        reason: "Unexpected error — check server logs",
+      });
+    }
+  }
+
+  return { selected, skipped, failed };
 };
 
 export const verifyEmail = async (token: string) => {
@@ -371,7 +591,7 @@ export const verifyEmail = async (token: string) => {
               paymentToken: leaderToken,
             });
           } catch (error) {
-            console.error("Failed to send payment link email:", error);
+            logger.error({ err: error }, "Failed to send payment link email");
           }
         }
       }
@@ -449,9 +669,9 @@ export const sendTeamVerificationEmails = async (
     } catch (error) {
       // One bad address shouldn't block verification emails to the rest
       // of the team.
-      console.error(
-        `Failed to send verification email to ${member.email}:`,
-        error
+      logger.error(
+        { err: error },
+        `Failed to send verification email to ${member.email}`
       );
     }
   }
@@ -508,7 +728,7 @@ export const resendVerificationEmail = async (email: string) => {
       verificationToken: token,
     });
   } catch (error) {
-    console.error("Failed to resend verification email:", error);
+    logger.error({ err: error }, "Failed to resend verification email");
   }
 
   return genericResult;
@@ -558,9 +778,15 @@ export const sendResumeLink = async (leaderEmail: string) => {
     .where(eq(teams.id, leader.teamId))
     .limit(1);
 
-  // Leaders can always get back to a draft (to keep editing) or a
-  // pending-payment team (to pay). Anything else has no further action.
-  if (!team || (team.status !== "DRAFT" && team.status !== "PENDING_PAYMENT")) {
+  // Leaders can always get back to a draft (to keep editing), a
+  // pending-payment team (to pay), or a confirmed team (to edit details).
+  // Anything else has no further action.
+  if (
+    !team ||
+    (team.status !== "DRAFT" &&
+      team.status !== "PENDING_PAYMENT" &&
+      team.status !== "CONFIRMED")
+  ) {
     return genericResult;
   }
 
@@ -579,12 +805,32 @@ export const sendResumeLink = async (leaderEmail: string) => {
     })
     .where(eq(teamMembers.id, leader.id));
 
-  await sendApplicationResumeEmail({
-    email: leader.email,
-    name: leader.fullName,
-    teamName: team.teamName,
-    resumeToken: token,
-  });
+  if (team.status === "CONFIRMED") {
+    await sendRegistrationConfirmationEmail({
+      email: leader.email,
+      name: leader.fullName,
+      teamName: team.teamName,
+      resumeToken: token,
+    });
+  } else if (team.status === "DRAFT") {
+    await sendConfirmRegistrationEmail({
+      email: leader.email,
+      name: leader.fullName,
+      teamName: team.teamName,
+      confirmToken: token,
+    });
+  } else {
+    // Only PENDING_PAYMENT remains at this point, and that status is now
+    // exclusively reached via the admin's "select for Round 2" action — so
+    // a leader resending their link here is asking for that same email again.
+    await sendRound2SelectionEmail({
+      email: leader.email,
+      name: leader.fullName,
+      teamName: team.teamName,
+      amount: REGISTRATION_FEE_RUPEES,
+      paymentToken: token,
+    });
+  }
 
   return genericResult;
 };
@@ -675,9 +921,10 @@ export const resumeApplication = async (resumeToken: string) => {
     }
   }
 
-  // If the team is no longer a draft, branch by status instead of a single
-  // generic "already submitted" message.
-  if (team.status !== "DRAFT") {
+  // If the team is no longer a draft (and isn't a confirmed team, which
+  // remains editable via this same link), branch by status instead of a
+  // single generic "already submitted" message.
+  if (team.status !== "DRAFT" && team.status !== "CONFIRMED") {
     if (team.status === "PENDING_PAYMENT") {
       return {
         alreadySubmitted: true,
@@ -846,7 +1093,7 @@ export const updateTeam = async (
     throw new Error("Team not found");
   }
 
-  if (team.status !== "DRAFT") {
+  if (team.status !== "DRAFT" && team.status !== "CONFIRMED") {
     throw new Error(
       "This application has already been submitted and can no longer be edited."
     );
@@ -958,16 +1205,9 @@ export const updateTeam = async (
     }
   });
 
-  // Re-send verification to any member left unverified without an active
-  // token (newly added members, or members whose email just changed).
-  try {
-    await sendTeamVerificationEmails(team.teamId);
-  } catch (error) {
-    console.error(
-      "Failed to send verification emails after draft update:",
-      error
-    );
-  }
+  // Round 1 has no per-member verification, so editing a draft/confirmed
+  // team never emails anyone but the leader (and only via the explicit
+  // confirm/resume flows above) — non-leader members get no email at all.
 
   const updatedMembers = await db
     .select({
@@ -981,7 +1221,7 @@ export const updateTeam = async (
   return {
     teamId: team.teamId,
     teamName: input.teamName.trim(),
-    status: "DRAFT",
+    status: team.status,
     members: updatedMembers.map((member) => ({
       name: member.name,
       email: member.email,

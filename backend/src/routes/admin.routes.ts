@@ -17,6 +17,7 @@ import {
   getTeamById,
   getTeams,
   publishProblemStatement,
+  selectTeamsForRound2,
   toggleCollegeStatus,
   toggleDomainStatus,
   toggleRoundStatus,
@@ -38,6 +39,7 @@ router.get("/dashboard", getDashboard);
 router.get("/teams", getTeams);
 router.get("/teams/:teamId", getTeamById);
 router.patch("/teams/:id/status", updateTeamStatus);
+router.post("/teams/select-round2", selectTeamsForRound2);
 router.get("/participants", getParticipants);
 router.get("/participants/:id", getParticipantById);
 router.get("/payments", getPayments);

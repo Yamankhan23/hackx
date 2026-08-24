@@ -27,12 +27,14 @@ import {
   createDomainSchema,
   createProblemStatementSchema,
   createRoundSchema,
+  selectTeamsForRound2Schema,
   updateCollegeSchema,
   updateDomainSchema,
   updateProblemStatementSchema,
   updateRoundSchema,
   updateTeamStatusSchema,
 } from "../validators/admin.validator";
+import { selectTeamsForRound2 as selectTeamsForRound2Service } from "../services/team.service";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
@@ -94,7 +96,7 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
       },
     });
   } catch (error) {
-    console.error("Admin login error:", error);
+    req.log.error({ err: error }, "Admin login error");
     res.status(500).json({ success: false, message: "Failed to login" });
   }
 };
@@ -177,7 +179,7 @@ export const getDashboard = async (_req: Request, res: Response): Promise<void> 
       },
     });
   } catch (error) {
-    console.error("Dashboard error:", error);
+    _req.log.error({ err: error }, "Dashboard error");
     res.status(500).json({ success: false, message: "Failed to load dashboard" });
   }
 };
@@ -231,7 +233,7 @@ export const getTeams = async (req: Request, res: Response): Promise<void> => {
 
     res.json({ success: true, data: rows, meta: { page, limit, total } });
   } catch (error) {
-    console.error("Get teams error:", error);
+    req.log.error({ err: error }, "Get teams error");
     res.status(500).json({ success: false, message: "Failed to fetch teams" });
   }
 };
@@ -277,7 +279,7 @@ export const getTeamById = async (req: Request, res: Response): Promise<void> =>
 
     res.json({ success: true, data: { ...team, members } });
   } catch (error) {
-    console.error("Get team error:", error);
+    req.log.error({ err: error }, "Get team error");
     res.status(500).json({ success: false, message: "Failed to fetch team" });
   }
 };
@@ -306,8 +308,29 @@ export const updateTeamStatus = async (req: Request, res: Response): Promise<voi
 
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Update team status error:", error);
+    req.log.error({ err: error }, "Update team status error");
     res.status(500).json({ success: false, message: "Failed to update team status" });
+  }
+};
+
+// Bulk-advances CONFIRMED (Round 1) teams to Round 2: flips each to
+// PENDING_PAYMENT and emails the leader a payment link. Teams that aren't
+// CONFIRMED are skipped rather than rejected, so one wrong row in a 50+
+// team selection doesn't fail the whole batch.
+export const selectTeamsForRound2 = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const validation = selectTeamsForRound2Schema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ success: false, message: "Invalid data", errors: validation.error.issues });
+      return;
+    }
+
+    const result = await selectTeamsForRound2Service(validation.data.teamIds);
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    req.log.error({ err: error }, "Select teams for Round 2 error");
+    res.status(500).json({ success: false, message: "Failed to select teams for Round 2" });
   }
 };
 
@@ -352,7 +375,7 @@ export const getParticipants = async (req: Request, res: Response): Promise<void
     ]);
     res.json({ success: true, data: rows, meta: { page, limit, total } });
   } catch (error) {
-    console.error("Get participants error:", error);
+    req.log.error({ err: error }, "Get participants error");
     res.status(500).json({ success: false, message: "Failed to fetch participants" });
   }
 };
@@ -441,7 +464,7 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
 
     res.json({ success: true, data: rows, meta: { page, limit, total } });
   } catch (error) {
-    console.error("Get payments error:", error);
+    req.log.error({ err: error }, "Get payments error");
     res.status(500).json({ success: false, message: "Failed to fetch payments" });
   }
 };
@@ -461,7 +484,7 @@ export const getPaymentById = async (req: Request, res: Response): Promise<void>
     }
     res.json({ success: true, data: payment });
   } catch (error) {
-    console.error("Get payment error:", error);
+    req.log.error({ err: error }, "Get payment error");
     res.status(500).json({ success: false, message: "Failed to fetch payment" });
   }
 };
@@ -471,7 +494,7 @@ export const getDomainsAdmin = async (_req: Request, res: Response): Promise<voi
     const data = await db.select().from(domains).orderBy(desc(domains.createdAt));
     res.json({ success: true, data });
   } catch (error) {
-    console.error("Get domains error:", error);
+    _req.log.error({ err: error }, "Get domains error");
     res.status(500).json({ success: false, message: "Failed to fetch domains" });
   }
 };
@@ -486,7 +509,7 @@ export const createDomain = async (req: Request, res: Response): Promise<void> =
     const [created] = await db.insert(domains).values(validation.data).returning();
     res.status(201).json({ success: true, data: created });
   } catch (error) {
-    console.error("Create domain error:", error);
+    req.log.error({ err: error }, "Create domain error");
     res.status(500).json({ success: false, message: "Failed to create domain" });
   }
 };
@@ -506,7 +529,7 @@ export const updateDomain = async (req: Request, res: Response): Promise<void> =
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Update domain error:", error);
+    req.log.error({ err: error }, "Update domain error");
     res.status(500).json({ success: false, message: "Failed to update domain" });
   }
 };
@@ -521,7 +544,7 @@ export const toggleDomainStatus = async (req: Request, res: Response): Promise<v
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Toggle domain status error:", error);
+    req.log.error({ err: error }, "Toggle domain status error");
     res.status(500).json({ success: false, message: "Failed to update domain status" });
   }
 };
@@ -531,7 +554,7 @@ export const getCollegesAdmin = async (_req: Request, res: Response): Promise<vo
     const data = await db.select().from(colleges).orderBy(desc(colleges.createdAt));
     res.json({ success: true, data });
   } catch (error) {
-    console.error("Get colleges error:", error);
+    _req.log.error({ err: error }, "Get colleges error");
     res.status(500).json({ success: false, message: "Failed to fetch colleges" });
   }
 };
@@ -546,7 +569,7 @@ export const createCollege = async (req: Request, res: Response): Promise<void> 
     const [created] = await db.insert(colleges).values(validation.data).returning();
     res.status(201).json({ success: true, data: created });
   } catch (error) {
-    console.error("Create college error:", error);
+    req.log.error({ err: error }, "Create college error");
     res.status(500).json({ success: false, message: "Failed to create college" });
   }
 };
@@ -566,7 +589,7 @@ export const updateCollege = async (req: Request, res: Response): Promise<void> 
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Update college error:", error);
+    req.log.error({ err: error }, "Update college error");
     res.status(500).json({ success: false, message: "Failed to update college" });
   }
 };
@@ -581,7 +604,7 @@ export const toggleCollegeStatus = async (req: Request, res: Response): Promise<
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Toggle college status error:", error);
+    req.log.error({ err: error }, "Toggle college status error");
     res.status(500).json({ success: false, message: "Failed to update college status" });
   }
 };
@@ -591,7 +614,7 @@ export const getRoundsAdmin = async (_req: Request, res: Response): Promise<void
     const data = await db.select().from(rounds).orderBy(asc(rounds.roundNumber));
     res.json({ success: true, data });
   } catch (error) {
-    console.error("Get rounds error:", error);
+    _req.log.error({ err: error }, "Get rounds error");
     res.status(500).json({ success: false, message: "Failed to fetch rounds" });
   }
 };
@@ -606,7 +629,7 @@ export const createRound = async (req: Request, res: Response): Promise<void> =>
     const [created] = await db.insert(rounds).values(validation.data).returning();
     res.status(201).json({ success: true, data: created });
   } catch (error) {
-    console.error("Create round error:", error);
+    req.log.error({ err: error }, "Create round error");
     res.status(500).json({ success: false, message: "Failed to create round" });
   }
 };
@@ -626,7 +649,7 @@ export const updateRound = async (req: Request, res: Response): Promise<void> =>
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Update round error:", error);
+    req.log.error({ err: error }, "Update round error");
     res.status(500).json({ success: false, message: "Failed to update round" });
   }
 };
@@ -641,7 +664,7 @@ export const toggleRoundStatus = async (req: Request, res: Response): Promise<vo
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Toggle round status error:", error);
+    req.log.error({ err: error }, "Toggle round status error");
     res.status(500).json({ success: false, message: "Failed to update round status" });
   }
 };
@@ -663,7 +686,7 @@ export const getProblemStatementsAdmin = async (_req: Request, res: Response): P
       .orderBy(desc(problemStatements.createdAt));
     res.json({ success: true, data });
   } catch (error) {
-    console.error("Get problem statements error:", error);
+    _req.log.error({ err: error }, "Get problem statements error");
     res.status(500).json({ success: false, message: "Failed to fetch problem statements" });
   }
 };
@@ -678,7 +701,7 @@ export const createProblemStatement = async (req: Request, res: Response): Promi
     const [created] = await db.insert(problemStatements).values(validation.data).returning();
     res.status(201).json({ success: true, data: created });
   } catch (error) {
-    console.error("Create problem statement error:", error);
+    req.log.error({ err: error }, "Create problem statement error");
     res.status(500).json({ success: false, message: "Failed to create problem statement" });
   }
 };
@@ -698,7 +721,7 @@ export const updateProblemStatement = async (req: Request, res: Response): Promi
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Update problem statement error:", error);
+    req.log.error({ err: error }, "Update problem statement error");
     res.status(500).json({ success: false, message: "Failed to update problem statement" });
   }
 };
@@ -717,7 +740,7 @@ export const publishProblemStatement = async (req: Request, res: Response): Prom
     }
     res.json({ success: true, data: updated });
   } catch (error) {
-    console.error("Publish problem statement error:", error);
+    req.log.error({ err: error }, "Publish problem statement error");
     res.status(500).json({ success: false, message: "Failed to update problem statement" });
   }
 };

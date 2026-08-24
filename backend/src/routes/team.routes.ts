@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  confirmRegistrationController,
   continueApplicationController,
   registerTeamController,
   resendVerificationEmailController,
@@ -16,6 +17,7 @@ import { publicTeamLimiter } from "../lib/rate-limit";
 const router = Router();
 
 router.post("/register", publicTeamLimiter, registerTeamController);
+router.get("/confirm/:token", publicTeamLimiter, confirmRegistrationController);
 router.get("/verify-email", verifyEmailController);
 router.post("/resend-verification", publicTeamLimiter, resendVerificationEmailController);
 router.post("/continue", publicTeamLimiter, continueApplicationController);

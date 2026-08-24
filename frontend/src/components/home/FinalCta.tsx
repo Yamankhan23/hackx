@@ -58,7 +58,7 @@ export function FinalCta() {
             </div>
 
             <p className="mt-6 text-xs text-slate-500">
-              ₹400 / team · 3–4 members · 6 September 2026 · Mumbai
+              Free to register · 3–4 members · 27 September 2026 · Mumbai
             </p>
           </div>
         </div>

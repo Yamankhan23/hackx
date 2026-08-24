@@ -21,7 +21,7 @@ export const getDomains = async (
       data: domainList,
     });
   } catch (error) {
-    console.error("Error fetching domains:", error);
+    _req.log.error({ err: error }, "Error fetching domains");
 
     res.status(500).json({
       success: false,

@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home";
+import { ConfirmPage } from "./pages/Registration/ConfirmPage";
 import { RegistrationPage } from "./pages/Registration/RegistrationPage";
 import { ResumePage } from "./pages/Registration/ResumePage";
 import { VerificationStatusPage } from "./pages/Registration/VerificationStatusPage";
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/register" element={<RegistrationPage />} />
           <Route path="/resume" element={<ResumePage />} />
+          <Route path="/confirm" element={<ConfirmPage />} />
           <Route path="/registration/verification" element={<VerificationStatusPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />

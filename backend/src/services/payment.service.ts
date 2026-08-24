@@ -11,6 +11,7 @@ import {
   verifyWebhookSignature,
 } from "../lib/razorpay";
 import { sendPaymentConfirmationEmail } from "./email.service";
+import { logger } from "../lib/logger";
 
 const resolveLeaderTeamByToken = async (token: string) => {
   const tokenHash = hashVerificationToken(token);
@@ -173,7 +174,7 @@ export const verifyAndConfirmPayment = async (input: {
     const razorpayPayment = await fetchRazorpayPayment(input.razorpayPaymentId);
     method = razorpayPayment.method ?? null;
   } catch (error) {
-    console.error("Failed to fetch payment method from Razorpay:", error);
+    logger.error({ err: error }, "Failed to fetch payment method from Razorpay");
   }
 
   await db
@@ -207,7 +208,7 @@ export const verifyAndConfirmPayment = async (input: {
         amount: REGISTRATION_FEE_RUPEES,
       });
     } catch (error) {
-      console.error("Failed to send payment confirmation email:", error);
+      logger.error({ err: error }, "Failed to send payment confirmation email");
     }
   }
 
@@ -301,7 +302,7 @@ export const handleRazorpayWebhook = async (
             amount: payment.amount,
           });
         } catch (error) {
-          console.error("Failed to send payment confirmation email:", error);
+          logger.error({ err: error }, "Failed to send payment confirmation email");
         }
       }
     }

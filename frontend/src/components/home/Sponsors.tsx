@@ -2,6 +2,9 @@ import { SectionHeading } from "./SectionHeading";
 import { useInView } from "./useInView";
 import { cn } from "../../lib/utils";
 
+// TODO: paste the "Become a Sponsor" Google Form link here once it's ready.
+const SPONSOR_FORM_URL = "#";
+
 export function Sponsors() {
   const { ref, inView } = useInView<HTMLDivElement>();
 
@@ -50,6 +53,17 @@ export function Sponsors() {
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-purple-400" />
                 To Be Announced
               </span>
+
+              <div className="mt-6">
+                <a
+                  href={SPONSOR_FORM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-11 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 text-sm font-semibold text-white shadow-[0_14px_40px_rgba(91,33,182,0.35)] transition hover:brightness-110"
+                >
+                  Become a Sponsor
+                </a>
+              </div>
             </div>
           </div>
         </div>

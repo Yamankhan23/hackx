@@ -1,6 +1,7 @@
 import api from "./api";
 import type {
   College,
+  ConfirmRegistrationResponse,
   Domain,
   RegisterTeamPayload,
   RegisterTeamResponse,
@@ -58,6 +59,16 @@ export async function updateTeam(
     message: string;
     data: RegisterTeamResponse;
   }>(`/teams/resume/${resumeToken}`, payload);
+
+  return response.data;
+}
+
+export async function confirmRegistration(token: string) {
+  const response = await api.get<{
+    success: boolean;
+    message: string;
+    data: ConfirmRegistrationResponse;
+  }>(`/teams/confirm/${token}`);
 
   return response.data;
 }

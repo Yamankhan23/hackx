@@ -94,6 +94,8 @@ export default function AdminSectionPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editingRow, setEditingRow] = useState<Row | null>(null);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(new Set());
+  const [selectingRound2, setSelectingRound2] = useState(false);
   const teamIdFilter = searchParams.get("teamId") ?? "";
 
   const title = useMemo(() => (key && key in labels ? labels[key] : "Admin"), [key]);
@@ -120,6 +122,7 @@ export default function AdminSectionPage() {
     if (!key) return;
     setLoading(true);
     setError("");
+    setSelectedTeamIds(new Set());
 
     try {
       if (key === "payments") {
@@ -230,6 +233,47 @@ export default function AdminSectionPage() {
     }
   };
 
+  const handleToggleTeamSelect = (id: number) => {
+    setSelectedTeamIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectRound2 = async () => {
+    const count = selectedTeamIds.size;
+    if (
+      count === 0 ||
+      !window.confirm(
+        `Select ${count} team${count === 1 ? "" : "s"} for Round 2? Each leader will immediately get an email with a ₹400 payment link.`
+      )
+    ) {
+      return;
+    }
+
+    setSelectingRound2(true);
+    try {
+      const result = await adminService.selectTeamsForRound2([...selectedTeamIds]);
+      const parts = [`${result.selected.length} selected`];
+      if (result.skipped.length) parts.push(`${result.skipped.length} skipped`);
+      if (result.failed.length) parts.push(`${result.failed.length} failed`);
+      const summary = parts.join(", ");
+
+      if (result.failed.length || result.skipped.length) {
+        toast.info(`Round 2 selection: ${summary}.`);
+      } else {
+        toast.success(`Round 2 selection: ${summary}.`);
+      }
+      loadRows();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to select teams for Round 2."));
+    } finally {
+      setSelectingRound2(false);
+    }
+  };
+
   const actionHandlers: ActionHandlers = {
     navigate,
     onTeamStatusChange: handleTeamStatusChange,
@@ -238,6 +282,8 @@ export default function AdminSectionPage() {
       setEditingRow(row);
       setModalMode("edit");
     },
+    selectedTeamIds,
+    onToggleTeamSelect: handleToggleTeamSelect,
   };
   const columns = getColumns(key, actionHandlers);
 
@@ -290,6 +336,31 @@ export default function AdminSectionPage() {
             <StatusFilter value={statusFilter} onChange={setStatusFilter} options={PAYMENT_STATUS_FILTERS} />
           ) : null}
         </section>
+
+        {key === "teams" && selectedTeamIds.size > 0 ? (
+          <section className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-purple-400/25 bg-purple-500/10 px-4 py-3 sm:flex-row sm:items-center">
+            <span className="text-sm text-purple-100">
+              {selectedTeamIds.size} team{selectedTeamIds.size === 1 ? "" : "s"} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTeamIds(new Set())}
+                className="h-9 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-medium text-white/75 transition hover:bg-white/10"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                disabled={selectingRound2}
+                onClick={handleSelectRound2}
+                className="h-9 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 text-xs font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {selectingRound2 ? "Selecting…" : "Select for Round 2"}
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         {error ? (
           <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>
@@ -390,12 +461,33 @@ type ActionHandlers = {
   onTeamStatusChange: (row: Row, status: TeamStatus) => void;
   onToggle: (row: Row) => void;
   onEdit: (row: Row) => void;
+  selectedTeamIds: Set<number>;
+  onToggleTeamSelect: (id: number) => void;
 };
 
 function getColumns(key: SectionKey | undefined, handlers: ActionHandlers): Column<Row>[] {
   switch (key) {
     case "teams":
       return [
+        {
+          key: "select",
+          header: "",
+          desktopOnly: true,
+          render: (row) => {
+            const id = Number(row.id);
+            const eligible = row.status === "CONFIRMED";
+            return (
+              <input
+                type="checkbox"
+                checked={handlers.selectedTeamIds.has(id)}
+                disabled={!eligible}
+                title={eligible ? "Select for Round 2" : "Only CONFIRMED teams can be selected for Round 2"}
+                onChange={() => handlers.onToggleTeamSelect(id)}
+                className="h-4 w-4 accent-purple-500 disabled:cursor-not-allowed disabled:opacity-30"
+              />
+            );
+          },
+        },
         {
           key: "team",
           header: "Team",
@@ -649,8 +741,20 @@ function mobileBadgeFor(key: SectionKey, row: Row) {
 
 function mobileActionsFor(key: SectionKey, row: Row, handlers: ActionHandlers) {
   if (key === "teams") {
+    const id = Number(row.id);
+    const eligible = row.status === "CONFIRMED";
     return (
       <div className="grid gap-2">
+        <label className="flex items-center gap-2 text-sm text-white/75">
+          <input
+            type="checkbox"
+            checked={handlers.selectedTeamIds.has(id)}
+            disabled={!eligible}
+            onChange={() => handlers.onToggleTeamSelect(id)}
+            className="h-4 w-4 accent-purple-500 disabled:cursor-not-allowed disabled:opacity-30"
+          />
+          Select for Round 2
+        </label>
         <select
           value={String(row.status ?? "DRAFT")}
           onChange={(e) => handlers.onTeamStatusChange(row, e.target.value as TeamStatus)}

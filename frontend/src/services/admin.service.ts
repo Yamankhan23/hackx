@@ -97,6 +97,12 @@ export type Payment = {
   createdAt: string;
 };
 
+export type SelectRound2Result = {
+  selected: { teamId: string; teamName: string }[];
+  skipped: { teamId: number | string; teamName?: string; reason: string }[];
+  failed: { teamId: string; teamName: string; reason: string }[];
+};
+
 export type ListMeta = { page: number; limit: number; total: number };
 export type ListResult<T> = { data: T[]; meta: ListMeta };
 
@@ -126,6 +132,8 @@ export const adminService = {
     unwrapList<Record<string, unknown>>(api.get("/admin/teams", { params })),
   updateTeamStatus: (id: number, status: TeamStatus) =>
     unwrap<Record<string, unknown>>(api.patch(`/admin/teams/${id}/status`, { status })),
+  selectTeamsForRound2: (teamIds: number[]) =>
+    unwrap<SelectRound2Result>(api.post("/admin/teams/select-round2", { teamIds })),
 
   getParticipants: (params?: Record<string, string | number>) =>
     unwrapList<Record<string, unknown>>(api.get("/admin/participants", { params })),

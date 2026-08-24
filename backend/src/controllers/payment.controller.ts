@@ -50,7 +50,7 @@ const errorResponse = (res: Response, error: unknown) => {
       .json({ success: false, code, message: mapped.message });
   }
 
-  console.error("Payment error:", error);
+  res.req.log.error({ err: error }, "Payment error");
   return res.status(500).json({
     success: false,
     message: "Something went wrong processing your payment. Please try again.",
@@ -124,7 +124,7 @@ export const razorpayWebhookController = async (
 
     return res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Razorpay webhook error:", error);
+    req.log.error({ err: error }, "Razorpay webhook error");
     return res.status(400).json({ success: false });
   }
 };

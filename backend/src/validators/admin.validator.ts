@@ -66,6 +66,10 @@ export const updateTeamStatusSchema = z.object({
   status: z.enum(["DRAFT", "PENDING_PAYMENT", "CONFIRMED", "CANCELLED"]),
 });
 
+export const selectTeamsForRound2Schema = z.object({
+  teamIds: z.array(z.number().int().positive()).min(1),
+});
+
 export const updateProblemStatementSchema = z.object({
   title: z.string().trim().min(1).max(255).optional(),
   description: z.string().trim().min(1).optional(),

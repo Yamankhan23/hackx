@@ -21,7 +21,7 @@ const prizes = [
   },
   {
     place: "2nd Place",
-    prize: "To Be Announced",
+    prize: "₹15,000",
     detail: "Trophy + Cash Prize",
     trophy: true,
     feature: false,
@@ -37,7 +37,7 @@ const prizes = [
   },
   {
     place: "3rd Place",
-    prize: "To Be Announced",
+    prize: "₹10,000",
     detail: "Trophy + Cash Prize",
     trophy: true,
     feature: false,
@@ -66,7 +66,7 @@ export function Prizes() {
               Win big. <span className="text-gradient">Earn glory.</span>
             </>
           }
-          subtitle="The top teams walk away with trophies, cash prizes, and recognition."
+          subtitle="₹50,000 total prize pool — the top teams walk away with trophies, cash prizes, and recognition."
         />
 
         <div
@@ -127,6 +127,11 @@ export function Prizes() {
               official participation certificate
             </span>
             .
+          </p>
+          <p className="mt-2 text-sm text-slate-300">
+            🏅 A special{" "}
+            <span className="font-semibold text-white">Best Approach Award</span>{" "}
+            also recognizes outstanding problem-solving.
           </p>
         </div>
       </div>
