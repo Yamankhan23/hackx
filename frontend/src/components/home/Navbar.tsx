@@ -33,25 +33,27 @@ export function Navbar() {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-50 transition-all duration-300",
-        scrolled
-          ? "border-b border-white/10 bg-[#050816]/80 backdrop-blur-xl"
-          : "border-b border-transparent bg-transparent"
+        // Solid dark background at all times, not translucent — a
+        // translucent/blurred backdrop still let hero content show through
+        // as visual noise behind the nav text. `scrolled` now only adds a
+        // border/shadow for definition once you've moved off the top.
+        "fixed inset-x-0 top-0 z-50 bg-[#050816] transition-shadow duration-300",
+        scrolled ? "border-b border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.35)]" : "border-b border-transparent"
       )}
     >
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <nav className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 {/* Branding */}
-        <a href="#home" className="group flex items-center gap-2.5">
+        <a href="#home" className="group flex items-center gap-2">
           <img
             src="/musa-logo.png"
             alt="MUSA — Maharashtra University Students Association"
-            className="h-9 w-9 rounded-full object-contain ring-1 ring-white/10"
+            className="h-7 w-7 rounded-full object-contain ring-1 ring-white/10"
           />
           <span className="flex flex-col leading-none">
-            <span className="text-sm font-bold tracking-tight text-white">
+            <span className="text-xs font-bold tracking-tight text-white">
               MUSA CodeX
             </span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-purple-200/70">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.3em] text-purple-200/70">
               2026
             </span>
           </span>
@@ -63,7 +65,7 @@ export function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white"
             >
               {link.label}
             </a>
@@ -73,7 +75,7 @@ export function Navbar() {
         <div className="hidden items-center gap-3 lg:flex">
           <Link
             to="/register"
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(91,33,182,0.35)] transition hover:brightness-110"
+            className="inline-flex h-8 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(91,33,182,0.35)] transition hover:brightness-110"
           >
             Register Now
           </Link>
@@ -85,7 +87,7 @@ export function Navbar() {
           aria-label="Toggle menu"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white lg:hidden"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white lg:hidden"
         >
           <svg
             viewBox="0 0 24 24"
@@ -93,7 +95,7 @@ export function Navbar() {
             stroke="currentColor"
             strokeWidth="1.8"
             strokeLinecap="round"
-            className="h-5 w-5"
+            className="h-4 w-4"
           >
             {open ? (
               <path d="M6 6l12 12M18 6L6 18" />
@@ -104,10 +106,11 @@ export function Navbar() {
         </button>
       </nav>
 
-      {/* Mobile menu */}
+      {/* Mobile menu — solid, not translucent, so it never blends with
+          whatever's scrolled underneath. */}
       <div
         className={cn(
-          "fixed inset-x-0 top-16 bottom-0 z-40 flex flex-col gap-2 bg-[#050816]/98 px-4 pt-4 backdrop-blur-xl transition-opacity duration-200 lg:hidden",
+          "fixed inset-x-0 top-12 bottom-0 z-40 flex flex-col gap-1.5 bg-[#050816] px-4 pt-3 transition-opacity duration-200 lg:hidden",
           open ? "opacity-100" : "pointer-events-none opacity-0"
         )}
       >
@@ -116,7 +119,7 @@ export function Navbar() {
             key={link.href}
             href={link.href}
             onClick={() => setOpen(false)}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-3.5 text-base font-medium text-slate-200 transition hover:bg-white/10 hover:text-white"
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10 hover:text-white"
           >
             {link.label}
           </a>
@@ -124,7 +127,7 @@ export function Navbar() {
         <Link
           to="/register"
           onClick={() => setOpen(false)}
-          className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-base font-semibold text-white shadow-[0_10px_30px_rgba(91,33,182,0.35)]"
+          className="mt-2 inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(91,33,182,0.35)]"
         >
           Register Now
         </Link>
