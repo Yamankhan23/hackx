@@ -45,7 +45,7 @@ export type RegisterTeamResponse = {
   registrationId: string;
   teamName: string;
   status: string;
-  resumeToken: string;
+  resumeToken: string | null;
   members: Array<{
     name: string;
     email: string;

@@ -223,8 +223,18 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
         navigate(`/resume?token=${encodeURIComponent(resumeToken)}`);
       } else {
         const response = await registerTeam(buildPayload(values));
-        toast.success("Registration submitted! Check your email to confirm your spot.");
-        navigate(`/resume?token=${encodeURIComponent(response.data.resumeToken)}`);
+
+        if (response.data.resumeToken) {
+          toast.success("Registration submitted! Check your email to confirm your spot.");
+          navigate(`/resume?token=${encodeURIComponent(response.data.resumeToken)}`);
+        } else {
+          // Team was created, but we couldn't mint/send the confirmation
+          // link right now — don't navigate to a resume page with no valid
+          // token. Send them to the "Continue Application" flow instead,
+          // which can (re)send a link by email independently of this.
+          toast.success(response.message);
+          navigate("/#continue");
+        }
       }
     } catch (error) {
       setGeneralError(getApiErrorMessage(error, "Failed to save team registration."));

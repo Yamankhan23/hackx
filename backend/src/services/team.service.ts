@@ -50,7 +50,12 @@ const resolveColleges = async (
           id: colleges.id,
         })
         .from(colleges)
-        .where(eq(colleges.collegeId, college.collegeId))
+        .where(
+          and(
+            eq(colleges.collegeId, college.collegeId),
+            eq(colleges.isActive, true)
+          )
+        )
         .limit(1);
 
       if (!existingCollege) {
@@ -130,7 +135,7 @@ export const registerTeam = async (input: RegisterTeamInput) => {
         id: domains.id,
       })
       .from(domains)
-      .where(eq(domains.id, input.domainId))
+      .where(and(eq(domains.id, input.domainId), eq(domains.isActive, true)))
       .limit(1);
 
     if (!domain) {
@@ -269,27 +274,58 @@ export const registerTeam = async (input: RegisterTeamInput) => {
     Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000
   ).toISOString();
 
-  await db
-    .update(teamMembers)
-    .set({
-      emailVerificationTokenHash: resumeTokenHash,
-      emailVerificationExpiresAt: expiresAt,
-    })
-    .where(eq(teamMembers.id, result.leaderMember.id));
-
-  await enqueueEmailJob({
-    emailType: "confirm_registration",
-    recipient: result.leaderMember.email,
-    dedupeKey: `confirm_registration:${hashVerificationToken(resumeToken)}`,
-    payload: {
-      email: result.leaderMember.email,
-      name: result.leaderMember.fullName,
-      teamName: result.teamName,
-      confirmToken: resumeToken,
-    },
-  });
-
   const { leaderMember, ...response } = result;
+
+  const mintToken = () =>
+    db
+      .update(teamMembers)
+      .set({
+        emailVerificationTokenHash: resumeTokenHash,
+        emailVerificationExpiresAt: expiresAt,
+      })
+      .where(eq(teamMembers.id, leaderMember.id));
+
+  try {
+    try {
+      await mintToken();
+    } catch (firstError) {
+      // One immediate retry — this UPDATE is the one step of registration
+      // that isn't covered by the transaction, so a single transient
+      // connection blip shouldn't be enough to strand an otherwise-committed
+      // team with no way to reach it.
+      logger.warn(
+        { err: firstError, teamId: response.teamId },
+        "Retrying confirmation token mint after registration commit"
+      );
+      await mintToken();
+    }
+
+    await enqueueEmailJob({
+      emailType: "confirm_registration",
+      recipient: leaderMember.email,
+      dedupeKey: `confirm_registration:${resumeTokenHash}`,
+      payload: {
+        email: leaderMember.email,
+        name: leaderMember.fullName,
+        teamName: result.teamName,
+        confirmToken: resumeToken,
+      },
+    });
+  } catch (error) {
+    // The team + members are already committed at this point — a failure
+    // here must NOT surface as a registration failure (the caller would
+    // retry and collide on the unique email/team-name constraints for a
+    // team that already exists). Report success but without a usable
+    // token: the leader can still recover it via the "continue
+    // application" (resend-by-email) flow, which mints a fresh one
+    // independently of this one having failed.
+    logger.error(
+      { err: error, teamId: response.teamId },
+      "Failed to mint confirmation token / enqueue email after registration commit"
+    );
+
+    return { ...response, resumeToken: null };
+  }
 
   return { ...response, resumeToken };
 };
@@ -364,7 +400,14 @@ export const confirmRegistration = async (token: string) => {
       status: teams.status,
     });
 
-  return { team: confirmed ?? { ...team, status: "CONFIRMED" }, alreadyConfirmed: false };
+  if (!confirmed) {
+    // The status changed (e.g. an admin cancelled the team) between our read
+    // above and this guarded update — do not report success for a
+    // transition that didn't actually happen.
+    throw new Error("This registration can no longer be confirmed.");
+  }
+
+  return { team: confirmed, alreadyConfirmed: false };
 };
 
 // Admin bulk action: advance a batch of Round-1-confirmed teams to Round 2.
@@ -959,28 +1002,31 @@ export const resumeApplication = async (resumeToken: string) => {
       .update(teamMembers)
       .set({ emailVerifiedAt: new Date().toISOString() })
       .where(eq(teamMembers.id, leader.id));
+  }
 
-    // The leader may verify via this resume link instead of their own
-    // verification email — if they were the last unverified member, the
-    // DRAFT -> PENDING_PAYMENT transition normally driven by verifyEmail()
-    // needs to happen here too, or the team is stuck in DRAFT forever with
-    // no payment link ever generated.
-    if (team.status === "DRAFT") {
-      const stillUnverified = await db
-        .select({ id: teamMembers.id })
-        .from(teamMembers)
-        .where(and(eq(teamMembers.teamId, team.id), isNull(teamMembers.emailVerifiedAt)));
+  // The leader may verify via this resume link instead of their own
+  // verification email — if they were the last unverified member, the
+  // DRAFT -> PENDING_PAYMENT transition normally driven by verifyEmail()
+  // needs to happen here too, or the team is stuck in DRAFT forever with
+  // no payment link ever generated. Checked unconditionally (not only when
+  // we just set emailVerifiedAt above) so a retry after a partial failure
+  // — the mark-verified UPDATE above succeeded but this transition didn't —
+  // still attempts the transition instead of silently skipping it forever.
+  if (team.status === "DRAFT") {
+    const stillUnverified = await db
+      .select({ id: teamMembers.id })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, team.id), isNull(teamMembers.emailVerifiedAt)));
 
-      if (stillUnverified.length === 0) {
-        const [transitioned] = await db
-          .update(teams)
-          .set({ status: "PENDING_PAYMENT" })
-          .where(and(eq(teams.id, team.id), eq(teams.status, "DRAFT")))
-          .returning({ id: teams.id });
+    if (stillUnverified.length === 0) {
+      const [transitioned] = await db
+        .update(teams)
+        .set({ status: "PENDING_PAYMENT" })
+        .where(and(eq(teams.id, team.id), eq(teams.status, "DRAFT")))
+        .returning({ id: teams.id });
 
-        if (transitioned) {
-          team.status = "PENDING_PAYMENT";
-        }
+      if (transitioned) {
+        team.status = "PENDING_PAYMENT";
       }
     }
   }
@@ -1163,11 +1209,24 @@ export const updateTeam = async (
     );
   }
 
+  // The authenticating leader's own row must stay present and stay LEADER —
+  // otherwise their token (the only credential for this team) is deleted or
+  // demoted mid-edit, leaving no one able to resume/pay/edit afterwards.
+  const leaderInPayload = input.members.find(
+    (member) => member.id === leader.id
+  );
+
+  if (!leaderInPayload || leaderInPayload.role !== "LEADER") {
+    throw new Error(
+      "The team leader cannot be removed or reassigned here. Contact admin to transfer leadership."
+    );
+  }
+
   await db.transaction(async (tx) => {
     const [domain] = await tx
       .select({ id: domains.id })
       .from(domains)
-      .where(eq(domains.id, input.domainId))
+      .where(and(eq(domains.id, input.domainId), eq(domains.isActive, true)))
       .limit(1);
 
     if (!domain) {
@@ -1179,7 +1238,11 @@ export const updateTeam = async (
       input.members
     );
 
-    await tx
+    // Re-check status inside the same transaction as the write: the read
+    // above can be stale by the time this runs (e.g. an admin's Round-2
+    // selection flips the team to PENDING_PAYMENT in between), and without
+    // this guard the edit below would go through anyway.
+    const [statusStillEditable] = await tx
       .update(teams)
       .set({
         teamName: input.teamName.trim(),
@@ -1187,7 +1250,19 @@ export const updateTeam = async (
         declarationAccepted: true,
         declarationAcceptedAt: new Date().toISOString(),
       })
-      .where(eq(teams.id, team.id));
+      .where(
+        and(
+          eq(teams.id, team.id),
+          inArray(teams.status, ["DRAFT", "CONFIRMED"])
+        )
+      )
+      .returning({ id: teams.id });
+
+    if (!statusStillEditable) {
+      throw new Error(
+        "This application has already been submitted and can no longer be edited."
+      );
+    }
 
     // Load existing members so we can match by id (stable across email
     // edits) rather than by email (breaks if a member — especially the

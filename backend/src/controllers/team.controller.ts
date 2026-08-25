@@ -27,7 +27,9 @@ export const registerTeamController = async (
 
     return res.status(201).json({
       success: true,
-      message: "Team registration submitted. Check your email to confirm your spot.",
+      message: result.resumeToken
+        ? "Team registration submitted. Check your email to confirm your spot."
+        : "Team registration submitted, but we couldn't send your confirmation email right away. Use \"Continue Application\" with your email to get your link.",
       data: result,
     });
   } catch (error) {
