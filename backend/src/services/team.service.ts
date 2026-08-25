@@ -1167,6 +1167,7 @@ export const updateTeam = async (
     .select({
       id: teamMembers.id,
       teamId: teamMembers.teamId,
+      email: teamMembers.email,
       emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
     })
     .from(teamMembers)
@@ -1209,9 +1210,11 @@ export const updateTeam = async (
     );
   }
 
-  // The authenticating leader's own row must stay present and stay LEADER —
-  // otherwise their token (the only credential for this team) is deleted or
-  // demoted mid-edit, leaving no one able to resume/pay/edit afterwards.
+  // The authenticating leader's own row must stay present, stay LEADER, and
+  // keep the same email — any of those changing would delete or invalidate
+  // their token (the only credential for this team), leaving no one able to
+  // resume/pay/edit afterwards. Leadership/email transfer isn't a supported
+  // feature; it must go through admin instead.
   const leaderInPayload = input.members.find(
     (member) => member.id === leader.id
   );
@@ -1219,6 +1222,12 @@ export const updateTeam = async (
   if (!leaderInPayload || leaderInPayload.role !== "LEADER") {
     throw new Error(
       "The team leader cannot be removed or reassigned here. Contact admin to transfer leadership."
+    );
+  }
+
+  if (leaderInPayload.email.toLowerCase() !== leader.email.toLowerCase()) {
+    throw new Error(
+      "The team leader's email cannot be changed here. Contact admin if it needs to change."
     );
   }
 

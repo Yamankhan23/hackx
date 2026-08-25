@@ -12,6 +12,7 @@ register,
   onAddMember,
   onRemoveMember,
   memberCount,
+  lockLeaderEmail,
 }: {
   register: UseFormRegister<RegistrationFormValues>;
   errors: FieldErrors<RegistrationFormValues>;
@@ -21,6 +22,7 @@ setValue: UseFormSetValue<RegistrationFormValues>;
   onAddMember: () => void;
   onRemoveMember: (index: number) => void;
   memberCount: number;
+  lockLeaderEmail?: boolean;
 }) {
   const membersErrorsObj = errors.members as
     | { message?: string; root?: { message?: string } }
@@ -48,6 +50,7 @@ register={register}
           colleges={colleges}
           showRemove={index === 3}
           onRemove={() => onRemoveMember(index)}
+          disableEmail={index === 0 && lockLeaderEmail}
         />
       ))}
 

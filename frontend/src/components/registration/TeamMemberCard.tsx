@@ -16,6 +16,7 @@ setValue: UseFormSetValue<RegistrationFormValues>;
   colleges: College[];
   showRemove?: boolean;
   onRemove?: () => void;
+  disableEmail?: boolean;
 };
 
 const YEAR_OF_STUDY_OPTIONS = ["1", "2", "3", "4"];
@@ -43,6 +44,7 @@ errors,
   colleges,
   showRemove,
   onRemove,
+  disableEmail,
 }: Props) {
   const memberErrors = errors.members?.[index];
 
@@ -89,21 +91,39 @@ const handleManualNameChange = useCallback(
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {memberFields.map(([field, label, inputProps]) => (
-          <label key={field} className={cn("grid gap-1.5", field === "yearOfStudy" ? "sm:col-span-2" : "")}>
-            <span className="text-xs font-medium text-slate-300">{label}</span>
-            <input
-              {...register(`members.${index}.${field}`)}
-              type={inputProps?.type}
-              inputMode={inputProps?.inputMode}
-              maxLength={inputProps?.maxLength}
-              className="h-11 rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
-            />
-            <span className="min-h-4 text-xs text-rose-300">
-              {(memberErrors?.[field] as { message?: string } | undefined)?.message}
-            </span>
-          </label>
-        ))}
+        {memberFields.map(([field, label, inputProps]) => {
+          const isLockedEmail = field === "email" && disableEmail;
+
+          return (
+            <label key={field} className={cn("grid gap-1.5", field === "yearOfStudy" ? "sm:col-span-2" : "")}>
+              <span className="text-xs font-medium text-slate-300">{label}</span>
+              <input
+                {...register(`members.${index}.${field}`)}
+                type={inputProps?.type}
+                inputMode={inputProps?.inputMode}
+                maxLength={inputProps?.maxLength}
+                // readOnly (not disabled) — disabled fields are dropped from
+                // react-hook-form's submitted values entirely, which would
+                // send an empty leader email instead of keeping the real one.
+                readOnly={isLockedEmail}
+                tabIndex={isLockedEmail ? -1 : undefined}
+                className={cn(
+                  "h-11 rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20",
+                  isLockedEmail && "cursor-not-allowed opacity-60"
+                )}
+              />
+              {isLockedEmail ? (
+                <span className="text-xs text-slate-500">
+                  Contact admin to change the team leader&apos;s email.
+                </span>
+              ) : (
+                <span className="min-h-4 text-xs text-rose-300">
+                  {(memberErrors?.[field] as { message?: string } | undefined)?.message}
+                </span>
+              )}
+            </label>
+          );
+        })}
 
         <label className="grid gap-1.5 sm:col-span-2">
           <span className="text-xs font-medium text-slate-300">Year of Study</span>

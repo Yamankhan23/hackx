@@ -10,7 +10,7 @@ import { logger } from "../lib/logger";
 // Postgres backends. If this is ever scaled to multiple instances, keep
 // instances * DB_POOL_MAX comfortably under the pooler's client connection
 // limit.
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.DB_POOL_MAX ?? 10),
   idleTimeoutMillis: Number(process.env.DB_POOL_IDLE_TIMEOUT_MS ?? 30_000),

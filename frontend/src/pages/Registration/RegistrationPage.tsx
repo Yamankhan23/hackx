@@ -304,6 +304,7 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
                   onAddMember={addMember}
                   onRemoveMember={removeMember}
                   memberCount={fields.length}
+                  lockLeaderEmail={Boolean(resumeDraft)}
                 />
               ) : null}
 
