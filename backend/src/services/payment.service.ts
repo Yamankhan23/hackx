@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { db } from "../db";
 import { payments, teamMembers, teams } from "../db/migrations/schema";
@@ -75,7 +75,7 @@ export const createPaymentOrder = async (token: string) => {
   }
 
   const [existingPayment] = await db
-    .select()
+    .select({ status: payments.status })
     .from(payments)
     .where(eq(payments.teamId, team.id))
     .limit(1);
@@ -89,37 +89,39 @@ export const createPaymentOrder = async (token: string) => {
   // and unpaid Razorpay orders simply expire unused.
   const order = await createRazorpayOrder(REGISTRATION_FEE_RUPEES, team.teamId);
 
-  let paymentRowId: number;
+  // Upsert on the team's (unique) payment row instead of select-then-branch:
+  // two concurrent calls for the same team (double-click, a slow in-flight
+  // request racing a webhook that just confirmed payment) can no longer
+  // interleave into a lost update, and `setWhere` guarantees this can never
+  // downgrade a row a webhook/verify already marked SUCCESS back to CREATED.
+  const [row] = await db
+    .insert(payments)
+    .values({
+      paymentId: `TEMP-${Date.now()}-${randomSuffix()}`,
+      teamId: team.id,
+      razorpayOrderId: order.id,
+      amount: REGISTRATION_FEE_RUPEES,
+      currency: "INR",
+      status: "CREATED",
+    })
+    .onConflictDoUpdate({
+      target: payments.teamId,
+      set: { razorpayOrderId: order.id, status: "CREATED" },
+      setWhere: ne(payments.status, "SUCCESS"),
+    })
+    .returning({ id: payments.id, paymentId: payments.paymentId });
 
-  if (!existingPayment) {
-    const [inserted] = await db
-      .insert(payments)
-      .values({
-        paymentId: `TEMP-${Date.now()}-${randomSuffix()}`,
-        teamId: team.id,
-        razorpayOrderId: order.id,
-        amount: REGISTRATION_FEE_RUPEES,
-        currency: "INR",
-        status: "CREATED",
-      })
-      .returning({ id: payments.id });
+  if (!row) {
+    // Conflict existed and setWhere blocked the update: a concurrent
+    // request already confirmed this payment.
+    throw new Error("ALREADY_CONFIRMED");
+  }
 
-    paymentRowId = inserted.id;
-
+  if (row.paymentId.startsWith("TEMP-")) {
     await db
       .update(payments)
-      .set({ paymentId: `PAY-${String(paymentRowId).padStart(3, "0")}` })
-      .where(eq(payments.id, paymentRowId));
-  } else {
-    paymentRowId = existingPayment.id;
-
-    await db
-      .update(payments)
-      .set({
-        razorpayOrderId: order.id,
-        status: "CREATED",
-      })
-      .where(eq(payments.id, paymentRowId));
+      .set({ paymentId: `PAY-${String(row.id).padStart(3, "0")}` })
+      .where(eq(payments.id, row.id));
   }
 
   return {
@@ -132,13 +134,59 @@ export const createPaymentOrder = async (token: string) => {
   };
 };
 
+// Resolves the team/leader for a verify call primarily via the Razorpay
+// order id, not the leader token: the token can be reminted by an unrelated
+// "resend my link" request while checkout is still in progress with
+// Razorpay, and the order id (which the frontend always has, straight from
+// the checkout response) is stable regardless. The token is only a fallback
+// for producing a sensible error when the order id doesn't resolve to
+// anything — it plays no role once a payment row is found, since the
+// signature check right after this is the actual security boundary.
+const resolveTeamAndLeaderForVerify = async (input: {
+  token: string;
+  razorpayOrderId: string;
+}) => {
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.razorpayOrderId, input.razorpayOrderId))
+    .limit(1);
+
+  if (!payment) {
+    const { leader, team } = await resolveLeaderTeamByToken(input.token);
+    return { payment: null, team, leader };
+  }
+
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.id, payment.teamId))
+    .limit(1);
+
+  if (!team) {
+    throw new Error("TEAM_NOT_FOUND");
+  }
+
+  const [leader] = await db
+    .select({ email: teamMembers.email, fullName: teamMembers.fullName })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.role, "LEADER")))
+    .limit(1);
+
+  if (!leader) {
+    throw new Error("TEAM_NOT_FOUND");
+  }
+
+  return { payment, team, leader };
+};
+
 export const verifyAndConfirmPayment = async (input: {
   token: string;
   razorpayOrderId: string;
   razorpayPaymentId: string;
   razorpaySignature: string;
 }) => {
-  const { leader, team } = await resolveLeaderTeamByToken(input.token);
+  const { payment, team, leader } = await resolveTeamAndLeaderForVerify(input);
 
   if (team.status === "CONFIRMED") {
     return { alreadyConfirmed: true };
@@ -148,13 +196,7 @@ export const verifyAndConfirmPayment = async (input: {
     throw new Error("NOT_READY_FOR_PAYMENT");
   }
 
-  const [payment] = await db
-    .select()
-    .from(payments)
-    .where(eq(payments.teamId, team.id))
-    .limit(1);
-
-  if (!payment || payment.razorpayOrderId !== input.razorpayOrderId) {
+  if (!payment) {
     throw new Error("ORDER_MISMATCH");
   }
 
@@ -165,10 +207,12 @@ export const verifyAndConfirmPayment = async (input: {
   });
 
   if (!signatureValid) {
+    // Guarded so this can't clobber a SUCCESS row the webhook already
+    // confirmed a beat earlier (this call's signature check racing behind it).
     await db
       .update(payments)
       .set({ status: "FAILED" })
-      .where(eq(payments.id, payment.id));
+      .where(and(eq(payments.id, payment.id), ne(payments.status, "SUCCESS")));
     throw new Error("SIGNATURE_INVALID");
   }
 
@@ -213,10 +257,14 @@ export const verifyAndConfirmPayment = async (input: {
   });
 
   if (transitioned) {
+    // Keyed on the actual charge, not just the team: a legitimate second
+    // payment (e.g. after an admin resets a team back to PENDING_PAYMENT
+    // post-refund) gets its own razorpayPaymentId and so still gets an email,
+    // instead of being silently dropped by a dedupe row from the first charge.
     await enqueueEmailJob({
       emailType: "payment_confirmation",
       recipient: leader.email,
-      dedupeKey: `payment_confirmation:${team.id}`,
+      dedupeKey: `payment_confirmation:${team.id}:${input.razorpayPaymentId}`,
       payload: {
         email: leader.email,
         name: leader.fullName,
@@ -320,7 +368,7 @@ export const handleRazorpayWebhook = async (
         await enqueueEmailJob({
           emailType: "payment_confirmation",
           recipient: leader.email,
-          dedupeKey: `payment_confirmation:${transitioned.id}`,
+          dedupeKey: `payment_confirmation:${transitioned.id}:${paymentEntity.id}`,
           payload: {
             email: leader.email,
             name: leader.fullName,
