@@ -5,6 +5,7 @@ import {
   createDomain,
   createProblemStatement,
   createRound,
+  exportParticipants,
   exportTeams,
   getCollegesAdmin,
   getDashboard,
@@ -43,6 +44,7 @@ router.get("/teams/:teamId", getTeamById);
 router.patch("/teams/:id/status", updateTeamStatus);
 router.post("/teams/select-round2", selectTeamsForRound2);
 router.get("/participants", getParticipants);
+router.get("/participants/export", exportParticipants);
 router.get("/participants/:id", getParticipantById);
 router.get("/payments", getPayments);
 router.get("/payments/:id", getPaymentById);

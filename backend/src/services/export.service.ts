@@ -1,9 +1,41 @@
+import type { Response } from "express";
 import ExcelJS from "exceljs";
 import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "../db";
 import { colleges, domains, payments, teamMembers, teams } from "../db/migrations/schema";
 import { teamStatusValues } from "../validators/admin.validator";
+
+// Streams a workbook to the client as a downloadable .xlsx. Filename carries
+// IST (the event's own timezone, matching the "Generated on" line printed
+// inside the report) rather than the server's UTC clock, trimmed to the
+// minute for readability.
+export const sendWorkbookAsAttachment = async (
+  res: Response,
+  workbook: ExcelJS.Workbook,
+  filenamePrefix: string
+): Promise<void> => {
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const part = (type: string) => dateParts.find((p) => p.type === type)?.value ?? "00";
+  const timestamp = `${part("year")}-${part("month")}-${part("day")}_${part("hour")}${part("minute")}`;
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filenamePrefix}-${timestamp}.xlsx"`);
+
+  await workbook.xlsx.write(res);
+  res.end();
+};
 
 const BRAND_FILL = "FF4C1D95";
 const SUBTITLE_FONT = "FF6B7280";
@@ -304,6 +336,130 @@ function addMembersSheet(
     cell.font = { bold: true, color: { argb: TONE_FONT[tone] } };
   });
 }
+
+export type ParticipantExportFilters = { search?: string; teamId?: string };
+
+const describeParticipantFilters = ({ search, teamId }: ParticipantExportFilters): string => {
+  const parts = [
+    teamId ? `Team: ${teamId}` : null,
+    search ? `Search: "${search}"` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join("   |   ") : "All participants";
+};
+
+type ParticipantRow = {
+  teamId: string;
+  teamName: string;
+  name: string;
+  email: string;
+  emailVerified: string | null;
+  role: string;
+  college: string;
+  branch: string;
+  yearOfStudy: number;
+  region: string;
+  createdAt: string;
+};
+
+function addParticipantsSheet(workbook: ExcelJS.Workbook, rows: ParticipantRow[], subtitle: string) {
+  const sheet = workbook.addWorksheet("Participants", { properties: { tabColor: { argb: BRAND_FILL } } });
+
+  const columns: { header: string; width: number }[] = [
+    { header: "S.No", width: 7 },
+    { header: "Team ID", width: 16 },
+    { header: "Team Name", width: 26 },
+    { header: "Role", width: 11 },
+    { header: "Full Name", width: 24 },
+    { header: "Email", width: 28 },
+    { header: "Email Verified", width: 14 },
+    { header: "College", width: 32 },
+    { header: "Branch", width: 22 },
+    { header: "Year", width: 8 },
+    { header: "Region", width: 14 },
+    { header: "Registered On", width: 20 },
+  ];
+
+  addTitleBlock(sheet, "MUSA CodeX 2026 — Participants Report", subtitle, columns.length);
+
+  const headerRowIndex = 4;
+  sheet.getRow(headerRowIndex).values = columns.map((c) => c.header);
+  columns.forEach((c, i) => {
+    sheet.getColumn(i + 1).width = c.width;
+  });
+
+  rows.forEach((participant, index) => {
+    const row = sheet.getRow(headerRowIndex + 1 + index);
+    row.values = [
+      index + 1,
+      participant.teamId,
+      participant.teamName,
+      participant.role === "LEADER" ? "Leader" : "Member",
+      participant.name,
+      participant.email,
+      participant.emailVerified ? "Yes" : "No",
+      participant.college,
+      participant.branch,
+      participant.yearOfStudy,
+      participant.region,
+      new Date(participant.createdAt),
+    ];
+    row.getCell(1).alignment = { horizontal: "center" };
+    row.getCell(4).alignment = { horizontal: "center" };
+    row.getCell(7).alignment = { horizontal: "center" };
+    row.getCell(10).alignment = { horizontal: "center" };
+    row.getCell(12).numFmt = "dd-mmm-yyyy hh:mm AM/PM";
+  });
+
+  styleTable(sheet, headerRowIndex, rows.length, columns.length);
+
+  rows.forEach((participant, index) => {
+    const row = sheet.getRow(headerRowIndex + 1 + index);
+    const cell = row.getCell(7);
+    const tone: Tone = participant.emailVerified ? "success" : "neutral";
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TONE_FILL[tone] } };
+    cell.font = { bold: true, color: { argb: TONE_FONT[tone] } };
+  });
+}
+
+export const buildParticipantsWorkbook = async (
+  filters: ParticipantExportFilters
+): Promise<ExcelJS.Workbook> => {
+  const { search, teamId } = filters;
+  const whereClause = and(
+    search ? or(ilike(teamMembers.fullName, `%${search}%`), ilike(teamMembers.email, `%${search}%`))! : undefined,
+    teamId ? eq(teams.teamId, teamId) : undefined
+  );
+
+  const rows = (await db
+    .select({
+      teamId: teams.teamId,
+      teamName: teams.teamName,
+      name: teamMembers.fullName,
+      email: teamMembers.email,
+      emailVerified: teamMembers.emailVerifiedAt,
+      role: teamMembers.role,
+      college: colleges.name,
+      branch: teamMembers.branch,
+      yearOfStudy: teamMembers.yearOfStudy,
+      region: teamMembers.region,
+      createdAt: teamMembers.createdAt,
+    })
+    .from(teamMembers)
+    .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(whereClause)
+    .orderBy(desc(teamMembers.createdAt))) as ParticipantRow[];
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "MUSA CodeX 2026 Admin";
+  workbook.created = new Date();
+
+  const subtitle = `Generated on ${new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}   |   ${describeParticipantFilters(filters)}   |   ${rows.length} participant${rows.length === 1 ? "" : "s"}`;
+
+  addParticipantsSheet(workbook, rows, subtitle);
+
+  return workbook;
+};
 
 export const buildTeamsWorkbook = async (filters: TeamExportFilters): Promise<ExcelJS.Workbook> => {
   const whereClause = buildTeamWhereClause(filters);

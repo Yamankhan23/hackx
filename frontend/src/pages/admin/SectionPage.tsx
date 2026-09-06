@@ -77,6 +77,17 @@ const createLabels: Record<string, string> = {
   "problem-statements": "New Problem Statement",
 };
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminSectionPage() {
   useAdminGuard();
   const toast = useToast();
@@ -98,6 +109,7 @@ export default function AdminSectionPage() {
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(new Set());
   const [selectingRound2, setSelectingRound2] = useState(false);
   const [exportingTeams, setExportingTeams] = useState(false);
+  const [exportingParticipants, setExportingParticipants] = useState(false);
   const teamIdFilter = searchParams.get("teamId") ?? "";
 
   const title = useMemo(() => (key && key in labels ? labels[key] : "Admin"), [key]);
@@ -283,19 +295,28 @@ export default function AdminSectionPage() {
         ...(debouncedSearch ? { search: debouncedSearch } : {}),
         ...(statusFilter ? { status: statusFilter } : {}),
       });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       toast.success("Teams report exported.");
     } catch (err) {
       toast.error(await getBlobApiErrorMessage(err, "Failed to export teams."));
     } finally {
       setExportingTeams(false);
+    }
+  };
+
+  const handleExportParticipants = async () => {
+    setExportingParticipants(true);
+    try {
+      const { blob, filename } = await adminService.exportParticipants({
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        ...(teamIdFilter ? { teamId: teamIdFilter } : {}),
+      });
+      downloadBlob(blob, filename);
+      toast.success("Participants report exported.");
+    } catch (err) {
+      toast.error(await getBlobApiErrorMessage(err, "Failed to export participants."));
+    } finally {
+      setExportingParticipants(false);
     }
   };
 
@@ -368,6 +389,16 @@ export default function AdminSectionPage() {
               className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto"
             >
               {exportingTeams ? "Exporting…" : "Export to Excel"}
+            </button>
+          ) : null}
+          {key === "participants" ? (
+            <button
+              type="button"
+              disabled={exportingParticipants}
+              onClick={handleExportParticipants}
+              className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto"
+            >
+              {exportingParticipants ? "Exporting…" : "Export to Excel"}
             </button>
           ) : null}
         </section>

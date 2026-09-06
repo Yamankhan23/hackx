@@ -43,7 +43,11 @@ import {
 } from "../validators/admin.validator";
 import { ADMIN_JWT_ALGORITHM } from "../lib/constants";
 import { selectTeamsForRound2 as selectTeamsForRound2Service } from "../services/team.service";
-import { buildTeamsWorkbook } from "../services/export.service";
+import {
+  buildParticipantsWorkbook,
+  buildTeamsWorkbook,
+  sendWorkbookAsAttachment,
+} from "../services/export.service";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
@@ -299,35 +303,29 @@ export const exportTeams = async (req: Request, res: Response): Promise<void> =>
       status: status || undefined,
     });
 
-    // IST (event's own timezone, matches the "Generated on" line inside the
-    // report) rather than the server's UTC clock, and trimmed to the minute
-    // — a readable filename, not a raw ISO timestamp.
-    const dateParts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Kolkata",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(new Date());
-    const part = (type: string) => dateParts.find((p) => p.type === type)?.value ?? "00";
-    const timestamp = `${part("year")}-${part("month")}-${part("day")}_${part("hour")}${part("minute")}`;
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="musa-codex-2026-teams-report-${timestamp}.xlsx"`
-    );
-
-    await workbook.xlsx.write(res);
-    res.end();
+    await sendWorkbookAsAttachment(res, workbook, "musa-codex-2026-teams-report");
   } catch (error) {
     req.log.error({ err: error }, "Export teams error");
     res.status(500).json({ success: false, message: "Failed to export teams" });
+  }
+};
+
+// Same rationale as exportTeams above: no pagination, reuses the same
+// search/teamId filters getParticipants already applies.
+export const exportParticipants = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const search = String(req.query.search ?? "").trim();
+    const teamId = String(req.query.teamId ?? "").trim();
+
+    const workbook = await buildParticipantsWorkbook({
+      search: search || undefined,
+      teamId: teamId || undefined,
+    });
+
+    await sendWorkbookAsAttachment(res, workbook, "musa-codex-2026-participants-report");
+  } catch (error) {
+    req.log.error({ err: error }, "Export participants error");
+    res.status(500).json({ success: false, message: "Failed to export participants" });
   }
 };
 

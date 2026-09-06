@@ -122,6 +122,17 @@ async function unwrapList<T>(
   };
 }
 
+async function exportAsExcel(
+  url: string,
+  params: Record<string, string | number> | undefined,
+  fallbackFilename: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await api.get(url, { params, responseType: "blob" });
+  const disposition = response.headers["content-disposition"] as string | undefined;
+  const filename = disposition?.match(/filename="?([^"]+)"?/)?.[1] ?? fallbackFilename;
+  return { blob: response.data as Blob, filename };
+}
+
 export const adminService = {
   login: (email: string, password: string) =>
     unwrap<AdminLoginResponse>(api.post("/admin/login", { email, password })),
@@ -132,17 +143,15 @@ export const adminService = {
     unwrapList<Record<string, unknown>>(api.get("/admin/teams", { params })),
   updateTeamStatus: (id: number, status: TeamStatus) =>
     unwrap<Record<string, unknown>>(api.patch(`/admin/teams/${id}/status`, { status })),
-  exportTeams: async (params?: Record<string, string | number>) => {
-    const response = await api.get("/admin/teams/export", { params, responseType: "blob" });
-    const disposition = response.headers["content-disposition"] as string | undefined;
-    const filename = disposition?.match(/filename="?([^"]+)"?/)?.[1] ?? "teams-report.xlsx";
-    return { blob: response.data as Blob, filename };
-  },
+  exportTeams: (params?: Record<string, string | number>) =>
+    exportAsExcel("/admin/teams/export", params, "teams-report.xlsx"),
   selectTeamsForRound2: (teamIds: number[]) =>
     unwrap<SelectRound2Result>(api.post("/admin/teams/select-round2", { teamIds })),
 
   getParticipants: (params?: Record<string, string | number>) =>
     unwrapList<Record<string, unknown>>(api.get("/admin/participants", { params })),
+  exportParticipants: (params?: Record<string, string | number>) =>
+    exportAsExcel("/admin/participants/export", params, "participants-report.xlsx"),
 
   getPayments: (params?: Record<string, string | number>) =>
     unwrapList<Payment>(api.get("/admin/payments", { params })),
