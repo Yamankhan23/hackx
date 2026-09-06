@@ -43,4 +43,8 @@ export const corsOptions: CorsOptions = {
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
+  // Lets the frontend read the generated filename off a file-download
+  // response (e.g. GET /admin/teams/export) — browsers hide response headers
+  // from cross-origin JS unless the server explicitly exposes them.
+  exposedHeaders: ["Content-Disposition"],
 };

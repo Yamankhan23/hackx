@@ -1,5 +1,5 @@
 import api from "./api";
-export { getApiErrorMessage } from "../lib/apiError";
+export { getApiErrorMessage, getBlobApiErrorMessage } from "../lib/apiError";
 
 export type AdminLoginResponse = {
   admin: { id: number; adminId: string; name: string; email: string; role: string };
@@ -132,6 +132,12 @@ export const adminService = {
     unwrapList<Record<string, unknown>>(api.get("/admin/teams", { params })),
   updateTeamStatus: (id: number, status: TeamStatus) =>
     unwrap<Record<string, unknown>>(api.patch(`/admin/teams/${id}/status`, { status })),
+  exportTeams: async (params?: Record<string, string | number>) => {
+    const response = await api.get("/admin/teams/export", { params, responseType: "blob" });
+    const disposition = response.headers["content-disposition"] as string | undefined;
+    const filename = disposition?.match(/filename="?([^"]+)"?/)?.[1] ?? "teams-report.xlsx";
+    return { blob: response.data as Blob, filename };
+  },
   selectTeamsForRound2: (teamIds: number[]) =>
     unwrap<SelectRound2Result>(api.post("/admin/teams/select-round2", { teamIds })),
 

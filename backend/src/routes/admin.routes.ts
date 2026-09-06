@@ -5,6 +5,7 @@ import {
   createDomain,
   createProblemStatement,
   createRound,
+  exportTeams,
   getCollegesAdmin,
   getDashboard,
   getDomainsAdmin,
@@ -37,6 +38,7 @@ router.use(requireAdminAuth);
 
 router.get("/dashboard", getDashboard);
 router.get("/teams", getTeams);
+router.get("/teams/export", exportTeams);
 router.get("/teams/:teamId", getTeamById);
 router.patch("/teams/:id/status", updateTeamStatus);
 router.post("/teams/select-round2", selectTeamsForRound2);
