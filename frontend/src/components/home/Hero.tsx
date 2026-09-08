@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import type { PublicProblemStatement } from "../../services/problem-statement.service";
 
 const infoBadges = [
   { label: "Entry Fee", value: "Free" },
@@ -7,7 +8,15 @@ const infoBadges = [
   { label: "Location", value: "Mumbai" },
 ];
 
-export function Hero() {
+export function Hero({
+  statements,
+  loaded,
+}: {
+  statements: PublicProblemStatement[];
+  loaded: boolean;
+}) {
+  const showProblemsBanner = loaded && statements.length > 0;
+
   return (
     <section
       id="home"
@@ -20,9 +29,36 @@ export function Hero() {
 
       <div className="relative z-10 mx-auto w-full max-w-5xl px-4 text-center sm:px-6">
 
-        <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-4 py-1.5 text-xs font-medium text-purple-100">
-          <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
-          Mumbai College-Level Hackathon · 2026
+        <div className="flex flex-col items-center gap-3">
+          {showProblemsBanner ? (
+            <a
+              href="#problems"
+              className="animate-fade-up group inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-100 transition hover:border-emerald-400/50 hover:bg-emerald-500/15"
+            >
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              </span>
+              Problem Statements are live
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </a>
+          ) : null}
+
+          <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-4 py-1.5 text-xs font-medium text-purple-100">
+            <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
+            Mumbai College-Level Hackathon · 2026
+          </div>
         </div>
 
         <p className="animate-fade-up mt-6 text-xs font-semibold uppercase tracking-[0.4em] text-purple-200/80">

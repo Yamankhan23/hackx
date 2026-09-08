@@ -15,8 +15,10 @@ import { FinalCta } from "../components/home/FinalCta";
 import { Footer } from "../components/home/Footer";
 import { sendResumeLink } from "../services/registration.service";
 import { getApiErrorMessage } from "../lib/apiError";
+import { useProblemStatements } from "../hooks/useProblemStatements";
 
 export default function Home() {
+  const { statements, loaded } = useProblemStatements();
   const [resumeEmail, setResumeEmail] = useState("");
   const [resumeError, setResumeError] = useState("");
   const [resumeSuccess, setResumeSuccess] = useState("");
@@ -52,11 +54,11 @@ export default function Home() {
     <div className="relative min-h-screen overflow-x-hidden bg-[#050816] text-white">
       <Navbar />
       <main>
-        <Hero />
+        <Hero statements={statements} loaded={loaded} />
         <About />
         <WhyParticipate />
         {/* <Domains /> */}
-        <ProblemStatements />
+        <ProblemStatements statements={statements} loaded={loaded} />
         <Timeline />
         <JudgingCriteria />
         <Prizes />

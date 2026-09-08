@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { SectionHeading } from "./SectionHeading";
 import { useInView } from "./useInView";
 import { cn } from "../../lib/utils";
 import { Modal } from "../common/Modal";
-import {
-  fetchPublishedProblemStatements,
-  type PublicProblemStatement,
-} from "../../services/problem-statement.service";
+import type { PublicProblemStatement } from "../../services/problem-statement.service";
 
 type DomainGroup = {
   domainId: number;
@@ -112,32 +109,16 @@ function DomainStatementList({ group }: { group: DomainGroup }) {
   );
 }
 
-export function ProblemStatements() {
+export function ProblemStatements({
+  statements,
+  loaded,
+}: {
+  statements: PublicProblemStatement[];
+  loaded: boolean;
+}) {
   const { ref, inView } = useInView<HTMLDivElement>();
-  const [groups, setGroups] = useState<DomainGroup[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [openDomainId, setOpenDomainId] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchPublishedProblemStatements()
-      .then((statements) => {
-        if (cancelled) return;
-        setGroups(groupByDomain(statements));
-      })
-      .catch(() => {
-        if (!cancelled) setGroups([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+  const groups = groupByDomain(statements);
   const hasStatements = loaded && groups.length > 0;
   const openGroup = groups.find((group) => group.domainId === openDomainId) ?? null;
 
