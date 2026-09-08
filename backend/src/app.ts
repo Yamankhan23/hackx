@@ -6,6 +6,7 @@ import healthRoutes from "./routes/health.routes";
 import teamRoutes from "./routes/team.routes";
 import domainRoutes from "./routes/domain.routes";
 import collegeRoutes from "./routes/college.routes";
+import problemStatementRoutes from "./routes/problem-statement.routes";
 import adminRoutes from "./routes/admin.routes";
 import { razorpayWebhookController } from "./controllers/payment.controller";
 import { globalLimiter } from "./lib/rate-limit";
@@ -50,6 +51,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/domains", domainRoutes);
 app.use("/api/colleges", collegeRoutes);
+app.use("/api/problem-statements", problemStatementRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use((req, res) => {

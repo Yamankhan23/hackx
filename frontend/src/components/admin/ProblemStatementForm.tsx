@@ -24,13 +24,9 @@ export function ProblemStatementForm({
     adminService.getDomains().then(setDomains).catch(() => setDomains([]));
   }, []);
 
-  // Derived, not stored: once domains load, fall back to matching the
-  // problem statement's existing domain by name until the user picks one.
-  const domainId =
-    manualDomainId ??
-    (initial?.domainName
-      ? String(domains.find((domain) => domain.name === initial.domainName)?.id ?? "")
-      : "");
+  // Derived, not stored: falls back to the problem statement's existing
+  // domainId until the user picks a different one from the dropdown.
+  const domainId = manualDomainId ?? (initial?.domainId ? String(initial.domainId) : "");
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();

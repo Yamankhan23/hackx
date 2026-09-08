@@ -66,6 +66,7 @@ export type ProblemStatement = {
   title: string;
   description: string;
   isPublished: boolean;
+  domainId: number | null;
   domainName: string | null;
 };
 

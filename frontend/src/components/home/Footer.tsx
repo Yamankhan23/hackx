@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 const quickLinks = [
   { label: "About", href: "#about" },
-  { label: "Domains", href: "#domains" },
+  { label: "Problem Statements", href: "#problems" },
   { label: "Timeline", href: "#timeline" },
   { label: "Prizes", href: "#prizes" },
   { label: "FAQ", href: "#faq" },

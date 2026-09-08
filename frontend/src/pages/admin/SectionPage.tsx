@@ -13,7 +13,7 @@ import {
 } from "../../services/admin.service";
 import { useAdminGuard } from "../../hooks/useAdminGuard";
 import { useToast } from "../../hooks/useToast";
-import { Modal } from "../../components/admin/Modal";
+import { Modal } from "../../components/common/Modal";
 import { DomainForm } from "../../components/admin/DomainForm";
 import { CollegeForm } from "../../components/admin/CollegeForm";
 import { RoundForm } from "../../components/admin/RoundForm";

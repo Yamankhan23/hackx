@@ -803,6 +803,7 @@ export const getProblemStatementsAdmin = async (_req: Request, res: Response): P
         title: problemStatements.title,
         description: problemStatements.description,
         isPublished: problemStatements.isPublished,
+        domainId: problemStatements.domainId,
         domainName: domains.name,
         createdAt: problemStatements.createdAt,
       })

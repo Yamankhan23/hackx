@@ -3,7 +3,7 @@ import { Navbar } from "../components/home/Navbar";
 import { Hero } from "../components/home/Hero";
 import { About } from "../components/home/About";
 import { WhyParticipate } from "../components/home/WhyParticipate";
-import { Domains } from "../components/home/Domains";
+// import { Domains } from "../components/home/Domains";
 import { Timeline } from "../components/home/Timeline";
 import { ProblemStatements } from "../components/home/ProblemStatements";
 import { JudgingCriteria } from "../components/home/JudgingCriteria";
@@ -55,9 +55,9 @@ export default function Home() {
         <Hero />
         <About />
         <WhyParticipate />
-        <Domains />
-        <Timeline />
+        {/* <Domains /> */}
         <ProblemStatements />
+        <Timeline />
         <JudgingCriteria />
         <Prizes />
         <Rules />
