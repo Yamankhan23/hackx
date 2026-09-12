@@ -37,22 +37,25 @@ setValue: UseFormSetValue<RegistrationFormValues>;
         </p>
       ) : null}
 
-      {[0, 1, 2, 3].slice(0, memberCount).map((index) => (
-        <TeamMemberCard
-          key={index}
-          index={index}
-          title={index === 0 ? "Team Leader" : `Member ${index + 1}`}
-          optional={index === 3}
-register={register}
-          errors={errors}
-          setValue={setValue}
-          watch={watch}
-          colleges={colleges}
-          showRemove={index === 3}
-          onRemove={() => onRemoveMember(index)}
-          disableEmail={index === 0 && lockLeaderEmail}
-        />
-      ))}
+      {[0, 1, 2, 3].slice(0, memberCount).map((index) => {
+        const isLeader = watch(`members.${index}.role`) === "LEADER";
+        return (
+          <TeamMemberCard
+            key={index}
+            index={index}
+            title={isLeader ? "Team Leader" : `Member ${index + 1}`}
+            optional={index === 3}
+            register={register}
+            errors={errors}
+            setValue={setValue}
+            watch={watch}
+            colleges={colleges}
+            showRemove={index === 3}
+            onRemove={() => onRemoveMember(index)}
+            disableEmail={isLeader && lockLeaderEmail}
+          />
+        );
+      })}
 
       {memberCount < 4 ? (
         <button
