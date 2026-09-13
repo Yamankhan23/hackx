@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { domains, problemStatements, teams, colleges, teamMembers, payments } from "./schema";
+import { domains, problemStatements, teams, colleges, teamMembers, payments, pptSubmissions } from "./schema";
 
 export const problemStatementsRelations = relations(problemStatements, ({one}) => ({
 	domain: one(domains, {
@@ -20,9 +20,10 @@ export const teamsRelations = relations(teams, ({one, many}) => ({
 	}),
 	teamMembers: many(teamMembers),
 	payments: many(payments),
+	pptSubmission: one(pptSubmissions),
 }));
 
-export const teamMembersRelations = relations(teamMembers, ({one}) => ({
+export const teamMembersRelations = relations(teamMembers, ({one, many}) => ({
 	college: one(colleges, {
 		fields: [teamMembers.collegeId],
 		references: [colleges.id]
@@ -30,6 +31,18 @@ export const teamMembersRelations = relations(teamMembers, ({one}) => ({
 	team: one(teams, {
 		fields: [teamMembers.teamId],
 		references: [teams.id]
+	}),
+	pptSubmissions: many(pptSubmissions),
+}));
+
+export const pptSubmissionsRelations = relations(pptSubmissions, ({one}) => ({
+	team: one(teams, {
+		fields: [pptSubmissions.teamId],
+		references: [teams.id]
+	}),
+	uploadedByMember: one(teamMembers, {
+		fields: [pptSubmissions.uploadedByMemberId],
+		references: [teamMembers.id]
 	}),
 }));
 

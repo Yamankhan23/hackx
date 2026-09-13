@@ -15,6 +15,8 @@ const STATUS_TONE: Record<string, Tone> = {
   COMPLETED: "success",
   VERIFIED: "success",
   PUBLISHED: "success",
+  UPLOADED: "success",
+  MISSING: "warning",
   DRAFT: "neutral",
   UPCOMING: "neutral",
   UNPUBLISHED: "neutral",

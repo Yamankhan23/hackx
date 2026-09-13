@@ -16,6 +16,7 @@ import {
   colleges,
   domains,
   payments,
+  pptSubmissions,
   problemStatements,
   rounds,
   teamMembers,
@@ -42,7 +43,11 @@ import {
   updateTeamStatusSchema,
 } from "../validators/admin.validator";
 import { ADMIN_JWT_ALGORITHM } from "../lib/constants";
-import { selectTeamsForRound2 as selectTeamsForRound2Service } from "../services/team.service";
+import {
+  getTeamPptForAdmin,
+  selectTeamsForRound2 as selectTeamsForRound2Service,
+} from "../services/team.service";
+import { downloadPptStream } from "../lib/google-drive";
 import {
   buildParticipantsWorkbook,
   buildTeamsWorkbook,
@@ -260,11 +265,13 @@ export const getTeams = async (req: Request, res: Response): Promise<void> => {
           status: teams.status,
           createdAt: teams.createdAt,
           domainName: domains.name,
-          memberCount: sql<number>`count(${teamMembers.id})::int`,
+          memberCount: sql<number>`count(distinct ${teamMembers.id})::int`,
+          hasPpt: sql<boolean>`bool_or(${pptSubmissions.id} is not null)`,
         })
         .from(teams)
         .innerJoin(domains, eq(domains.id, teams.domainId))
         .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+        .leftJoin(pptSubmissions, eq(pptSubmissions.teamId, teams.id))
         .where(whereClause)
         .groupBy(teams.id, domains.name)
         .orderBy(desc(teams.createdAt))
@@ -368,10 +375,53 @@ export const getTeamById = async (req: Request, res: Response): Promise<void> =>
       .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
       .where(eq(teamMembers.teamId, team.id));
 
-    res.json({ success: true, data: { ...team, members } });
+    const [pptSubmission] = await db
+      .select({
+        fileName: pptSubmissions.fileName,
+        fileSizeBytes: pptSubmissions.fileSizeBytes,
+        updatedAt: pptSubmissions.updatedAt,
+      })
+      .from(pptSubmissions)
+      .where(eq(pptSubmissions.teamId, team.id))
+      .limit(1);
+
+    res.json({
+      success: true,
+      data: { ...team, members, pptSubmission: pptSubmission ?? null },
+    });
   } catch (error) {
     req.log.error({ err: error }, "Get team error");
     res.status(500).json({ success: false, message: "Failed to fetch team" });
+  }
+};
+
+// Streams the PPT straight from Drive through this authenticated admin
+// endpoint — the file stays private in the dedicated Drive account, so no
+// admin needs (or gets) direct access to that Google account.
+export const downloadTeamPpt = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const teamId = String(req.params.teamId);
+    const submission = await getTeamPptForAdmin(teamId);
+
+    res.setHeader("Content-Type", submission.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${submission.fileName.replace(/"/g, "")}"`
+    );
+
+    const stream = await downloadPptStream(submission.driveFileId);
+    stream.on("error", (err: unknown) => {
+      req.log.error({ err }, "PPT download stream error");
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: "Failed to download PPT" });
+      }
+    });
+    stream.pipe(res);
+  } catch (error) {
+    req.log.error({ err: error }, "Download team PPT error");
+    const message = error instanceof Error ? error.message : "Failed to download PPT";
+    const status = message === "Team not found" || message === "No PPT submitted for this team" ? 404 : 500;
+    res.status(status).json({ success: false, message });
   }
 };
 

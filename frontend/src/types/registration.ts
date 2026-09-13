@@ -104,6 +104,12 @@ export type ConfirmRegistrationResponse = {
   };
 };
 
+export type PptSubmission = {
+  fileName: string;
+  fileSizeBytes: number;
+  updatedAt: string;
+};
+
 export type ResumeApplicationResponse = {
   alreadySubmitted: boolean;
   status?: string;
@@ -113,6 +119,7 @@ export type ResumeApplicationResponse = {
     registrationId: string | null;
     teamName: string;
     status: string;
+    pptSubmission?: PptSubmission | null;
   };
   draft?: ResumeDraft;
   payment?: { amountRupees: number };

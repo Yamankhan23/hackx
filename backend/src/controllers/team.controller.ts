@@ -12,6 +12,7 @@ import {
   resumeApplication,
   sendResumeLink,
   updateTeam,
+  uploadTeamPpt,
   verifyEmail,
 } from "../services/team.service";
 import { friendlyDbErrorMessage } from "../lib/db-errors";
@@ -325,6 +326,65 @@ export const updateTeamController = async (
         error instanceof Error
           ? error.message
           : "Failed to update team draft",
+    });
+  }
+};
+
+export const uploadTeamPptController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { token } = req.params;
+
+    if (typeof token !== "string" || !token) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid resume token",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file was uploaded. Please attach a .ppt or .pptx file.",
+      });
+    }
+
+    const result = await uploadTeamPpt(token, req.file);
+
+    return res.status(200).json({
+      success: true,
+      message: "PPT uploaded successfully.",
+      data: result,
+    });
+  } catch (error) {
+    req.log.error({ err: error }, "Upload team PPT error");
+
+    if (error instanceof Error) {
+      if (error.message === "INVALID_TOKEN") {
+        return res.status(404).json({
+          success: false,
+          message: "This link is invalid.",
+        });
+      }
+      if (error.message === "TOKEN_EXPIRED") {
+        return res.status(410).json({
+          success: false,
+          message: "This link has expired. Please request a new one.",
+        });
+      }
+      if (error.message === "Team not found") {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      if (error.message.includes("already been submitted")) {
+        return res.status(409).json({ success: false, message: error.message });
+      }
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload PPT. Please try again.",
     });
   }
 };

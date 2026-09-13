@@ -1,12 +1,17 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { db } from "../db";
 import {
   colleges,
   domains,
+  pptSubmissions,
   teamMembers,
   teams,
 } from "../db/migrations/schema";
+import {
+  deletePptFromDrive,
+  uploadPptToDrive,
+} from "../lib/google-drive";
 import type {
   RegisterTeamInput,
   UpdateTeamInput,
@@ -1123,6 +1128,16 @@ export const resumeApplication = async (resumeToken: string) => {
     collegeList.map((college) => [Number(college.id), college])
   );
 
+  const [pptSubmission] = await db
+    .select({
+      fileName: pptSubmissions.fileName,
+      fileSizeBytes: pptSubmissions.fileSizeBytes,
+      updatedAt: pptSubmissions.updatedAt,
+    })
+    .from(pptSubmissions)
+    .where(eq(pptSubmissions.teamId, team.id))
+    .limit(1);
+
   return {
     alreadySubmitted: false,
     team: {
@@ -1130,6 +1145,7 @@ export const resumeApplication = async (resumeToken: string) => {
       registrationId: team.registrationId,
       teamName: team.teamName,
       status: team.status,
+      pptSubmission: pptSubmission ?? null,
     },
     draft: {
       teamName: team.teamName,
@@ -1376,4 +1392,150 @@ export const updateTeam = async (
       emailVerified: Boolean(member.emailVerified),
     })),
   };
+};
+
+// ---------------------------------------------------------
+// PPT submission (leader upload, admin review/download)
+// ---------------------------------------------------------
+
+// Same leader-auth + editable-status rules as updateTeam above: the resume
+// token is the only credential, and upload is only allowed while the team is
+// still DRAFT or CONFIRMED (matches the same edit window as team details).
+export const uploadTeamPpt = async (
+  resumeToken: string,
+  file: { buffer: Buffer; originalname: string; mimetype: string; size: number }
+) => {
+  const tokenHash = hashVerificationToken(resumeToken);
+
+  const [leader] = await db
+    .select({
+      id: teamMembers.id,
+      teamId: teamMembers.teamId,
+      emailVerificationExpiresAt: teamMembers.emailVerificationExpiresAt,
+    })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.emailVerificationTokenHash, tokenHash),
+        eq(teamMembers.role, "LEADER")
+      )
+    )
+    .limit(1);
+
+  if (!leader) {
+    throw new Error("INVALID_TOKEN");
+  }
+
+  if (
+    leader.emailVerificationExpiresAt &&
+    new Date(leader.emailVerificationExpiresAt).getTime() < Date.now()
+  ) {
+    throw new Error("TOKEN_EXPIRED");
+  }
+
+  const [team] = await db
+    .select({
+      id: teams.id,
+      teamId: teams.teamId,
+      status: teams.status,
+    })
+    .from(teams)
+    .where(eq(teams.id, leader.teamId))
+    .limit(1);
+
+  if (!team) {
+    throw new Error("Team not found");
+  }
+
+  if (team.status !== "DRAFT" && team.status !== "CONFIRMED") {
+    throw new Error(
+      "This application has already been submitted and can no longer be edited."
+    );
+  }
+
+  const [existing] = await db
+    .select({
+      id: pptSubmissions.id,
+      driveFileId: pptSubmissions.driveFileId,
+    })
+    .from(pptSubmissions)
+    .where(eq(pptSubmissions.teamId, team.id))
+    .limit(1);
+
+  const { driveFileId } = await uploadPptToDrive({
+    buffer: file.buffer,
+    fileName: `${team.teamId} - ${file.originalname}`,
+    mimeType: file.mimetype,
+  });
+
+  if (existing) {
+    await db
+      .update(pptSubmissions)
+      .set({
+        driveFileId,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        fileSizeBytes: file.size,
+        uploadedByMemberId: leader.id,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(pptSubmissions.id, existing.id));
+
+    // Best-effort cleanup of the file it replaced — a failure here shouldn't
+    // fail the upload that already succeeded and is already recorded.
+    try {
+      await deletePptFromDrive(existing.driveFileId);
+    } catch (error) {
+      logger.warn(
+        { err: error, teamId: team.teamId },
+        "Failed to delete previous PPT submission from Drive after replacement"
+      );
+    }
+  } else {
+    await db.insert(pptSubmissions).values({
+      teamId: team.id,
+      uploadedByMemberId: leader.id,
+      driveFileId,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      fileSizeBytes: file.size,
+    });
+  }
+
+  return {
+    fileName: file.originalname,
+    fileSizeBytes: file.size,
+  };
+};
+
+// Admin download proxy: looks up the stored Drive file id by the team's
+// readable id (team_id or registration_id, same lookup getTeamById uses).
+export const getTeamPptForAdmin = async (teamReadableId: string) => {
+  const [team] = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(
+      or(eq(teams.teamId, teamReadableId), eq(teams.registrationId, teamReadableId))!
+    )
+    .limit(1);
+
+  if (!team) {
+    throw new Error("Team not found");
+  }
+
+  const [submission] = await db
+    .select({
+      driveFileId: pptSubmissions.driveFileId,
+      fileName: pptSubmissions.fileName,
+      mimeType: pptSubmissions.mimeType,
+    })
+    .from(pptSubmissions)
+    .where(eq(pptSubmissions.teamId, team.id))
+    .limit(1);
+
+  if (!submission) {
+    throw new Error("No PPT submitted for this team");
+  }
+
+  return submission;
 };

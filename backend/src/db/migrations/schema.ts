@@ -190,6 +190,35 @@ export const rounds = pgTable("rounds", {
 	check("rounds_number_check", sql`round_number > 0`),
 ]);
 
+// One PPT submission per team. The file itself lives in Google Drive
+// (uploaded via a dedicated account's OAuth refresh token — see
+// lib/google-drive.ts); this row only tracks the metadata/pointer needed to
+// list, replace, or download it.
+export const pptSubmissions = pgTable("ppt_submissions", {
+	id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity({ name: "ppt_submissions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	teamId: bigint("team_id", { mode: "number" }).notNull(),
+	uploadedByMemberId: bigint("uploaded_by_member_id", { mode: "number" }).notNull(),
+	driveFileId: varchar("drive_file_id", { length: 100 }).notNull(),
+	fileName: varchar("file_name", { length: 255 }).notNull(),
+	mimeType: varchar("mime_type", { length: 150 }).notNull(),
+	fileSizeBytes: integer("file_size_bytes").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.teamId],
+			foreignColumns: [teams.id],
+			name: "ppt_submissions_team_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.uploadedByMemberId],
+			foreignColumns: [teamMembers.id],
+			name: "ppt_submissions_uploaded_by_member_id_fkey"
+		}).onDelete("restrict"),
+	unique("ppt_submissions_team_id_key").on(table.teamId),
+	check("ppt_submissions_file_size_bytes_check", sql`file_size_bytes > 0`),
+]);
+
 // Lightweight Postgres-backed email queue: registration/verification/payment
 // flows insert a row here (fast, in-transaction-safe) instead of awaiting the
 // Resend API directly. A background worker (see email-queue.service.ts)

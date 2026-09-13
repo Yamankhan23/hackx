@@ -81,3 +81,21 @@ export async function resendVerificationEmail(email: string) {
 
   return response.data;
 }
+
+export async function uploadTeamPpt(resumeToken: string, file: File) {
+  const formData = new FormData();
+  formData.append("ppt", file);
+
+  // Content-Type is left for axios/the browser to set — it must include the
+  // multipart boundary, which the shared client's default JSON header would
+  // otherwise clobber.
+  const response = await api.post<{
+    success: boolean;
+    message: string;
+    data: { fileName: string; fileSizeBytes: number };
+  }>(`/teams/resume/${resumeToken}/ppt`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+  return response.data;
+}

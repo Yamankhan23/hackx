@@ -123,7 +123,7 @@ async function unwrapList<T>(
   };
 }
 
-async function exportAsExcel(
+async function downloadAsBlob(
   url: string,
   params: Record<string, string | number> | undefined,
   fallbackFilename: string
@@ -133,6 +133,8 @@ async function exportAsExcel(
   const filename = disposition?.match(/filename="?([^"]+)"?/)?.[1] ?? fallbackFilename;
   return { blob: response.data as Blob, filename };
 }
+
+const exportAsExcel = downloadAsBlob;
 
 export const adminService = {
   login: (email: string, password: string) =>
@@ -148,6 +150,8 @@ export const adminService = {
     exportAsExcel("/admin/teams/export", params, "teams-report.xlsx"),
   selectTeamsForRound2: (teamIds: number[]) =>
     unwrap<SelectRound2Result>(api.post("/admin/teams/select-round2", { teamIds })),
+  downloadTeamPpt: (teamId: string) =>
+    downloadAsBlob(`/admin/teams/${teamId}/ppt`, undefined, `${teamId}-ppt`),
 
   getParticipants: (params?: Record<string, string | number>) =>
     unwrapList<Record<string, unknown>>(api.get("/admin/participants", { params })),

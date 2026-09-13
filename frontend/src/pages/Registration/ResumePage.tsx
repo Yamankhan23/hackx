@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { resumeApplication } from "../../services/registration.service";
+import { resumeApplication, uploadTeamPpt } from "../../services/registration.service";
 import { createPaymentOrder, verifyPayment } from "../../services/payment.service";
 import { useToast } from "../../hooks/useToast";
 import { getApiErrorMessage } from "../../lib/apiError";
-import type { ResumeApplicationResponse } from "../../types/registration";
+import { formatDateTime } from "../../lib/formatDate";
+import type { PptSubmission, ResumeApplicationResponse } from "../../types/registration";
+
+// Mirrors the backend's multer limit (see upload.middleware.ts) — checked
+// client-side too so a leader isn't left waiting through a doomed upload of
+// an oversized file before finding out.
+const PPT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
 type LoadState =
   | { status: "loading" }
@@ -190,8 +196,95 @@ export function ResumePage() {
         >
           Edit Team Details
         </Link>
+
+        {data.team.status === "CONFIRMED" && (
+          <PptUploadSection
+            token={token}
+            initialSubmission={data.team.pptSubmission ?? null}
+          />
+        )}
       </Card>
     </Shell>
+  );
+}
+
+function PptUploadSection({
+  token,
+  initialSubmission,
+}: {
+  token: string;
+  initialSubmission: PptSubmission | null;
+}) {
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [submission, setSubmission] = useState(initialSubmission);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (file.size > PPT_MAX_FILE_SIZE_BYTES) {
+      setError("File is too large. Maximum size is 50MB.");
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+
+    try {
+      const result = await uploadTeamPpt(token, file);
+      setSubmission({
+        fileName: result.data.fileName,
+        fileSizeBytes: result.data.fileSizeBytes,
+        updatedAt: new Date().toISOString(),
+      });
+      toast.success("PPT uploaded successfully.");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Failed to upload PPT. Please try again."));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm">
+      <p className="font-semibold text-white">Presentation (PPT)</p>
+
+      {submission ? (
+        <div className="mt-2 flex items-center justify-between gap-3 text-slate-300">
+          <div className="min-w-0">
+            <p className="truncate">{submission.fileName}</p>
+            <p className="text-xs text-slate-500">
+              {(submission.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB · Uploaded {formatDateTime(submission.updatedAt)}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-slate-400">No presentation uploaded yet.</p>
+      )}
+
+      {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".ppt,.pptx"
+        onChange={handleFileChange}
+        className="hidden"
+        disabled={uploading}
+      />
+      <button
+        type="button"
+        disabled={uploading}
+        onClick={() => fileInputRef.current?.click()}
+        className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-purple-400/40 bg-purple-500/10 text-sm font-semibold text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {uploading ? "Uploading…" : submission ? "Replace PPT" : "Upload PPT"}
+      </button>
+    </div>
   );
 }
 

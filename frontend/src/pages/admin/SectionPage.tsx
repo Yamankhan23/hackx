@@ -110,6 +110,7 @@ export default function AdminSectionPage() {
   const [selectingRound2, setSelectingRound2] = useState(false);
   const [exportingTeams, setExportingTeams] = useState(false);
   const [exportingParticipants, setExportingParticipants] = useState(false);
+  const [downloadingPptTeamId, setDownloadingPptTeamId] = useState<string | null>(null);
   const teamIdFilter = searchParams.get("teamId") ?? "";
 
   const title = useMemo(() => (key && key in labels ? labels[key] : "Admin"), [key]);
@@ -304,6 +305,21 @@ export default function AdminSectionPage() {
     }
   };
 
+  const handleDownloadPpt = async (row: Row) => {
+    const teamId = String(row.teamId ?? "");
+    if (!teamId) return;
+
+    setDownloadingPptTeamId(teamId);
+    try {
+      const { blob, filename } = await adminService.downloadTeamPpt(teamId);
+      downloadBlob(blob, filename);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to download PPT."));
+    } finally {
+      setDownloadingPptTeamId(null);
+    }
+  };
+
   const handleExportParticipants = async () => {
     setExportingParticipants(true);
     try {
@@ -330,6 +346,8 @@ export default function AdminSectionPage() {
     },
     selectedTeamIds,
     onToggleTeamSelect: handleToggleTeamSelect,
+    onDownloadPpt: handleDownloadPpt,
+    downloadingPptTeamId,
   };
   const columns = getColumns(key, actionHandlers);
 
@@ -514,6 +532,22 @@ function StatusFilter({
   );
 }
 
+// A secondary, lower-emphasis indicator — deliberately not another
+// StatusBadge pill, so it reads as metadata under the team's real status
+// rather than a second, competing status of its own.
+function PptIndicator({ hasPpt }: { hasPpt: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
+        hasPpt ? "text-emerald-300" : "text-white/40"
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${hasPpt ? "bg-emerald-400" : "bg-white/25"}`} />
+      {hasPpt ? "PPT uploaded" : "PPT missing"}
+    </span>
+  );
+}
+
 function stringify(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Verified" : "Pending";
@@ -529,6 +563,8 @@ type ActionHandlers = {
   onEdit: (row: Row) => void;
   selectedTeamIds: Set<number>;
   onToggleTeamSelect: (id: number) => void;
+  onDownloadPpt: (row: Row) => void;
+  downloadingPptTeamId: string | null;
 };
 
 function getColumns(key: SectionKey | undefined, handlers: ActionHandlers): Column<Row>[] {
@@ -566,7 +602,16 @@ function getColumns(key: SectionKey | undefined, handlers: ActionHandlers): Colu
         },
         { key: "domain", header: "Domain", render: (row) => String(row.domainName ?? "—") },
         { key: "members", header: "Members", render: (row) => String(row.memberCount ?? 0) },
-        { key: "status", header: "Status", render: (row) => <StatusBadge status={String(row.status ?? "DRAFT")} /> },
+        {
+          key: "status",
+          header: "Status",
+          render: (row) => (
+            <div className="flex flex-col items-start gap-1.5">
+              <StatusBadge status={String(row.status ?? "DRAFT")} />
+              <PptIndicator hasPpt={Boolean(row.hasPpt)} />
+            </div>
+          ),
+        },
         { key: "registered", header: "Registered", render: (row) => formatDateTime(row.createdAt as string) },
         {
           key: "actions",
@@ -586,6 +631,15 @@ function getColumns(key: SectionKey | undefined, handlers: ActionHandlers): Colu
                   </option>
                 ))}
               </select>
+              {row.hasPpt ? (
+                <button
+                  className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-medium text-white/75 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={handlers.downloadingPptTeamId === String(row.teamId ?? "")}
+                  onClick={() => handlers.onDownloadPpt(row)}
+                >
+                  {handlers.downloadingPptTeamId === String(row.teamId ?? "") ? "Downloading…" : "PPT"}
+                </button>
+              ) : null}
               <button
                 className="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-medium text-white/75 transition hover:bg-white/10"
                 onClick={() => handlers.navigate(`/admin/participants?teamId=${encodeURIComponent(String(row.teamId ?? ""))}`)}
@@ -821,6 +875,10 @@ function mobileActionsFor(key: SectionKey, row: Row, handlers: ActionHandlers) {
           />
           Select for Round 2
         </label>
+        <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+          <span className="text-sm text-white/75">Presentation</span>
+          <PptIndicator hasPpt={Boolean(row.hasPpt)} />
+        </div>
         <select
           value={String(row.status ?? "DRAFT")}
           onChange={(e) => handlers.onTeamStatusChange(row, e.target.value as TeamStatus)}
@@ -832,6 +890,15 @@ function mobileActionsFor(key: SectionKey, row: Row, handlers: ActionHandlers) {
             </option>
           ))}
         </select>
+        {row.hasPpt ? (
+          <button
+            className="h-10 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white/85 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={handlers.downloadingPptTeamId === String(row.teamId ?? "")}
+            onClick={() => handlers.onDownloadPpt(row)}
+          >
+            {handlers.downloadingPptTeamId === String(row.teamId ?? "") ? "Downloading PPT…" : "Download PPT"}
+          </button>
+        ) : null}
         <button
           className="h-10 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white/85 transition hover:bg-white/10"
           onClick={() => handlers.navigate(`/admin/participants?teamId=${encodeURIComponent(String(row.teamId ?? ""))}`)}
