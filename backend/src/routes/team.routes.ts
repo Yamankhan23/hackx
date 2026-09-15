@@ -32,7 +32,7 @@ const handlePptUpload = (
     if (err) {
       const message =
         err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE"
-          ? "File is too large. Maximum size is 50MB."
+          ? "File is too large. Maximum size is 35MB."
           : err instanceof Error
             ? err.message
             : "Failed to process the uploaded file.";

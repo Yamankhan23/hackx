@@ -8,7 +8,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.ms-powerpoint",
 ]);
 
-export const PPT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+export const PPT_MAX_FILE_SIZE_BYTES = 35 * 1024 * 1024;
 
 export const pptUpload = multer({
   storage: multer.memoryStorage(),

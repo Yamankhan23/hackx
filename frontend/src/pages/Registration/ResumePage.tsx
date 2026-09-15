@@ -10,7 +10,7 @@ import type { PptSubmission, ResumeApplicationResponse } from "../../types/regis
 // Mirrors the backend's multer limit (see upload.middleware.ts) — checked
 // client-side too so a leader isn't left waiting through a doomed upload of
 // an oversized file before finding out.
-const PPT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const PPT_MAX_FILE_SIZE_BYTES = 35 * 1024 * 1024;
 
 type LoadState =
   | { status: "loading" }
@@ -227,7 +227,7 @@ function PptUploadSection({
     if (!file) return;
 
     if (file.size > PPT_MAX_FILE_SIZE_BYTES) {
-      setError("File is too large. Maximum size is 50MB.");
+      setError("File is too large. Maximum size is 35MB.");
       return;
     }
 
@@ -284,6 +284,9 @@ function PptUploadSection({
       >
         {uploading ? "Uploading…" : submission ? "Replace PPT" : "Upload PPT"}
       </button>
+      <p className="mt-2 text-center text-xs text-slate-500">
+        Only .ppt or .pptx files are supported · Max size 35MB
+      </p>
     </div>
   );
 }
