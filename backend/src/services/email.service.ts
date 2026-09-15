@@ -158,8 +158,11 @@ export const sendRegistrationConfirmationEmail = async ({
           <strong>${safeTeamName}</strong>'s registration for MUSA CodeX 2026 — Round 1 is confirmed.
           Round 1 is free, so there's nothing more to verify or pay.
         </p>
-        <p style="margin:0;">
+        <p style="margin:0 0 12px;">
           Need to fix a typo or swap a member? Use the button below anytime to review and edit your team's details.
+        </p>
+        <p style="margin:0;">
+          Don't forget to upload your team's presentation (PPT) from the same page once it's ready.
         </p>
       `,
       ctaLabel: "View / Edit Your Team",
