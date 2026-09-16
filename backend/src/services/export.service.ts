@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "../db";
-import { colleges, domains, payments, teamMembers, teams } from "../db/migrations/schema";
+import { colleges, domains, payments, pptSubmissions, teamMembers, teams } from "../db/migrations/schema";
 import { teamStatusValues } from "../validators/admin.validator";
 
 // Streams a workbook to the client as a downloadable .xlsx. Filename carries
@@ -85,7 +85,11 @@ const STATUS_TONE: Record<string, Tone> = {
   REFUNDED: "neutral",
 };
 
-export type TeamExportFilters = { search?: string; status?: string };
+export type TeamExportFilters = {
+  search?: string;
+  status?: string;
+  pptStatus?: "uploaded" | "missing";
+};
 
 const thinBorder = {
   top: { style: "thin" as const, color: { argb: BORDER_COLOR } },
@@ -153,9 +157,14 @@ function applyToneFill(cell: ExcelJS.Cell, status: string, labels: Record<string
   cell.alignment = { vertical: "middle", horizontal: "center" };
 }
 
-const buildTeamWhereClause = ({ search, status }: TeamExportFilters): SQL | undefined => {
+const buildTeamWhereClause = ({ search, status, pptStatus }: TeamExportFilters): SQL | undefined => {
   const filters: SQL[] = [];
   if (status) filters.push(eq(teams.status, status as (typeof teamStatusValues)[number]));
+  if (pptStatus === "uploaded") {
+    filters.push(sql`exists (select 1 from ${pptSubmissions} where ${pptSubmissions.teamId} = ${teams.id})`);
+  } else if (pptStatus === "missing") {
+    filters.push(sql`not exists (select 1 from ${pptSubmissions} where ${pptSubmissions.teamId} = ${teams.id})`);
+  }
   if (search) {
     filters.push(
       or(
@@ -169,9 +178,10 @@ const buildTeamWhereClause = ({ search, status }: TeamExportFilters): SQL | unde
   return filters.length ? and(...filters) : undefined;
 };
 
-const describeFilters = ({ search, status }: TeamExportFilters): string => {
+const describeFilters = ({ search, status, pptStatus }: TeamExportFilters): string => {
   const parts = [
     status ? `Status: ${TEAM_STATUS_LABELS[status] ?? status}` : null,
+    pptStatus ? `PPT: ${pptStatus === "uploaded" ? "Uploaded" : "Missing"}` : null,
     search ? `Search: "${search}"` : null,
   ].filter((part): part is string => Boolean(part));
   return parts.length ? parts.join("   |   ") : "All teams";
@@ -193,6 +203,7 @@ function addTeamsSheet(
   teamRows: TeamRow[],
   leaderByTeam: Map<number, { fullName: string; email: string; mobileNumber: string; collegeName: string; region: string }>,
   paymentByTeam: Map<number, { status: string; amount: number; method: string | null }>,
+  pptByTeam: Map<number, { fileName: string }>,
   subtitle: string
 ) {
   const sheet = workbook.addWorksheet("Teams", { properties: { tabColor: { argb: BRAND_FILL } } });
@@ -212,6 +223,7 @@ function addTeamsSheet(
     { header: "Payment Status", width: 15 },
     { header: "Amount Paid", width: 13 },
     { header: "Payment Method", width: 16 },
+    { header: "PPT Submitted", width: 15 },
     { header: "Registered On", width: 20 },
   ];
 
@@ -226,6 +238,7 @@ function addTeamsSheet(
   teamRows.forEach((team, index) => {
     const leader = leaderByTeam.get(team.id);
     const payment = paymentByTeam.get(team.id);
+    const ppt = pptByTeam.get(team.id);
     const row = sheet.getRow(headerRowIndex + 1 + index);
     row.values = [
       index + 1,
@@ -242,20 +255,26 @@ function addTeamsSheet(
       payment ? payment.status : "—",
       payment && payment.status === "SUCCESS" ? payment.amount : null,
       payment?.method ?? "—",
+      ppt ? "Yes" : "No",
       new Date(team.createdAt),
     ];
     row.getCell(6).alignment = { horizontal: "center" };
     row.getCell(13).numFmt = '"₹"#,##0';
-    row.getCell(15).numFmt = "dd-mmm-yyyy hh:mm AM/PM";
+    row.getCell(15).alignment = { horizontal: "center" };
+    row.getCell(16).numFmt = "dd-mmm-yyyy hh:mm AM/PM";
   });
 
   styleTable(sheet, headerRowIndex, teamRows.length, columns.length);
 
   teamRows.forEach((team, index) => {
     const payment = paymentByTeam.get(team.id);
+    const ppt = pptByTeam.get(team.id);
     const row = sheet.getRow(headerRowIndex + 1 + index);
     applyToneFill(row.getCell(5), team.status, TEAM_STATUS_LABELS);
     if (payment) applyToneFill(row.getCell(12), payment.status, PAYMENT_STATUS_LABELS);
+    const pptTone: Tone = ppt ? "success" : "neutral";
+    row.getCell(15).fill = { type: "pattern", pattern: "solid", fgColor: { argb: TONE_FILL[pptTone] } };
+    row.getCell(15).font = { bold: true, color: { argb: TONE_FONT[pptTone] } };
   });
 }
 
@@ -484,7 +503,7 @@ export const buildTeamsWorkbook = async (filters: TeamExportFilters): Promise<Ex
 
   const teamIds = teamRows.map((t) => t.id);
 
-  const [leaders, paymentRows, memberRows] = teamIds.length
+  const [leaders, paymentRows, memberRows, pptRows] = teamIds.length
     ? await Promise.all([
         db
           .select({
@@ -524,11 +543,19 @@ export const buildTeamsWorkbook = async (filters: TeamExportFilters): Promise<Ex
           .innerJoin(colleges, eq(colleges.id, teamMembers.collegeId))
           .where(inArray(teamMembers.teamId, teamIds))
           .orderBy(asc(teamMembers.teamId), asc(teamMembers.role)),
+        db
+          .select({
+            teamId: pptSubmissions.teamId,
+            fileName: pptSubmissions.fileName,
+          })
+          .from(pptSubmissions)
+          .where(inArray(pptSubmissions.teamId, teamIds)),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
 
   const leaderByTeam = new Map(leaders.map((l) => [l.teamId, l]));
   const paymentByTeam = new Map(paymentRows.map((p) => [p.teamId, p]));
+  const pptByTeam = new Map(pptRows.map((p) => [p.teamId, p]));
   const teamMetaById = new Map(teamRows.map((t) => [t.id, { teamId: t.teamId, teamName: t.teamName }]));
 
   const workbook = new ExcelJS.Workbook();
@@ -537,7 +564,7 @@ export const buildTeamsWorkbook = async (filters: TeamExportFilters): Promise<Ex
 
   const subtitle = `Generated on ${new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}   |   ${describeFilters(filters)}   |   ${teamRows.length} team${teamRows.length === 1 ? "" : "s"}`;
 
-  addTeamsSheet(workbook, teamRows, leaderByTeam, paymentByTeam, subtitle);
+  addTeamsSheet(workbook, teamRows, leaderByTeam, paymentByTeam, pptByTeam, subtitle);
   addMembersSheet(workbook, teamMetaById, memberRows as MemberRow[], subtitle);
 
   return workbook;

@@ -46,6 +46,10 @@ const PAYMENT_STATUS_FILTERS = [
   { value: "FAILED", label: "Failed" },
   { value: "REFUNDED", label: "Refunded" },
 ];
+const PPT_STATUS_FILTERS = [
+  { value: "uploaded", label: "PPT Uploaded" },
+  { value: "missing", label: "PPT Missing" },
+];
 
 const labels: Record<SectionKey, string> = {
   teams: "Teams",
@@ -104,6 +108,7 @@ export default function AdminSectionPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [pptFilter, setPptFilter] = useState("");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editingRow, setEditingRow] = useState<Row | null>(null);
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(new Set());
@@ -126,7 +131,7 @@ export default function AdminSectionPage() {
   // Reset to page 1 whenever the active filters change — computed during
   // render (React's documented pattern for resetting state on a derived
   // change) rather than via a setState-in-effect.
-  const filterSignature = `${key ?? ""}|${debouncedSearch}|${statusFilter}|${teamIdFilter}`;
+  const filterSignature = `${key ?? ""}|${debouncedSearch}|${statusFilter}|${pptFilter}|${teamIdFilter}`;
   const [prevFilterSignature, setPrevFilterSignature] = useState(filterSignature);
   if (prevFilterSignature !== filterSignature) {
     setPrevFilterSignature(filterSignature);
@@ -155,6 +160,7 @@ export default function AdminSectionPage() {
           limit: PAGE_SIZE,
           ...(debouncedSearch ? { search: debouncedSearch } : {}),
           ...(statusFilter ? { status: statusFilter } : {}),
+          ...(pptFilter ? { pptStatus: pptFilter } : {}),
         });
         setRows(result.data);
         setMeta(result.meta);
@@ -179,7 +185,7 @@ export default function AdminSectionPage() {
     } finally {
       setLoading(false);
     }
-  }, [key, page, debouncedSearch, statusFilter, teamIdFilter, title]);
+  }, [key, page, debouncedSearch, statusFilter, pptFilter, teamIdFilter, title]);
 
   useEffect(() => {
     // Deferred to a microtask so the fetch's state updates don't run
@@ -295,6 +301,7 @@ export default function AdminSectionPage() {
       const { blob, filename } = await adminService.exportTeams({
         ...(debouncedSearch ? { search: debouncedSearch } : {}),
         ...(statusFilter ? { status: statusFilter } : {}),
+        ...(pptFilter ? { pptStatus: pptFilter } : {}),
       });
       downloadBlob(blob, filename);
       toast.success("Teams report exported.");
@@ -395,6 +402,9 @@ export default function AdminSectionPage() {
           />
           {key === "teams" ? (
             <StatusFilter value={statusFilter} onChange={setStatusFilter} options={TEAM_STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))} />
+          ) : null}
+          {key === "teams" ? (
+            <StatusFilter value={pptFilter} onChange={setPptFilter} options={PPT_STATUS_FILTERS} placeholder="All PPT statuses" />
           ) : null}
           {key === "payments" ? (
             <StatusFilter value={statusFilter} onChange={setStatusFilter} options={PAYMENT_STATUS_FILTERS} />
@@ -511,10 +521,12 @@ function StatusFilter({
   value,
   onChange,
   options,
+  placeholder = "All statuses",
 }: {
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
+  placeholder?: string;
 }) {
   return (
     <select
@@ -522,7 +534,7 @@ function StatusFilter({
       onChange={(e) => onChange(e.target.value)}
       className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition focus:border-purple-400/40"
     >
-      <option value="">All statuses</option>
+      <option value="">{placeholder}</option>
       {options.map((opt) => (
         <option key={opt.value} value={opt.value} className="bg-[#081029]">
           {opt.label}

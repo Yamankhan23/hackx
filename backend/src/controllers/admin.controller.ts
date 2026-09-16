@@ -235,14 +235,25 @@ export const getTeams = async (req: Request, res: Response): Promise<void> => {
     const { page, limit, offset } = paginationResult;
     const search = String(req.query.search ?? "").trim();
     const status = String(req.query.status ?? "").trim();
+    const pptStatus = String(req.query.pptStatus ?? "").trim();
 
     if (status && !teamStatusValues.includes(status as (typeof teamStatusValues)[number])) {
       res.status(400).json({ success: false, message: "Invalid status filter" });
       return;
     }
 
+    if (pptStatus && pptStatus !== "uploaded" && pptStatus !== "missing") {
+      res.status(400).json({ success: false, message: "Invalid PPT status filter" });
+      return;
+    }
+
     const filters: SQL[] = [];
     if (status) filters.push(eq(teams.status, status as (typeof teamStatusValues)[number]));
+    if (pptStatus === "uploaded") {
+      filters.push(sql`exists (select 1 from ${pptSubmissions} where ${pptSubmissions.teamId} = ${teams.id})`);
+    } else if (pptStatus === "missing") {
+      filters.push(sql`not exists (select 1 from ${pptSubmissions} where ${pptSubmissions.teamId} = ${teams.id})`);
+    }
     if (search) {
       filters.push(
         or(
@@ -299,15 +310,22 @@ export const exportTeams = async (req: Request, res: Response): Promise<void> =>
   try {
     const search = String(req.query.search ?? "").trim();
     const status = String(req.query.status ?? "").trim();
+    const pptStatus = String(req.query.pptStatus ?? "").trim();
 
     if (status && !teamStatusValues.includes(status as (typeof teamStatusValues)[number])) {
       res.status(400).json({ success: false, message: "Invalid status filter" });
       return;
     }
 
+    if (pptStatus && pptStatus !== "uploaded" && pptStatus !== "missing") {
+      res.status(400).json({ success: false, message: "Invalid PPT status filter" });
+      return;
+    }
+
     const workbook = await buildTeamsWorkbook({
       search: search || undefined,
       status: status || undefined,
+      pptStatus: (pptStatus as "uploaded" | "missing") || undefined,
     });
 
     await sendWorkbookAsAttachment(res, workbook, "musa-codex-2026-teams-report");
