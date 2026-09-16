@@ -1,11 +1,12 @@
 import multer from "multer";
 
-// PPT/PPTX only — the two mimetypes real browsers/OSes report for these
+// PPT/PPTX/PDF only — the mimetypes real browsers/OSes report for these
 // extensions. Kept in memory (not disk) since the file is immediately
 // streamed on to Google Drive, never written to this server's filesystem.
 const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/vnd.ms-powerpoint",
+  "application/pdf",
 ]);
 
 export const PPT_MAX_FILE_SIZE_BYTES = 35 * 1024 * 1024;
@@ -15,7 +16,7 @@ export const pptUpload = multer({
   limits: { fileSize: PPT_MAX_FILE_SIZE_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      cb(new Error("Only .ppt or .pptx files are allowed"));
+      cb(new Error("Only .ppt, .pptx, or .pdf files are allowed"));
       return;
     }
     cb(null, true);

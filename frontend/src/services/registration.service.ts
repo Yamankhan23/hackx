@@ -82,6 +82,15 @@ export async function resendVerificationEmail(email: string) {
   return response.data;
 }
 
+export async function deleteTeamPpt(resumeToken: string) {
+  const response = await api.delete<{
+    success: boolean;
+    message: string;
+  }>(`/teams/resume/${resumeToken}/ppt`);
+
+  return response.data;
+}
+
 export async function uploadTeamPpt(resumeToken: string, file: File) {
   const formData = new FormData();
   formData.append("ppt", file);

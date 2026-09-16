@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   confirmRegistrationController,
   continueApplicationController,
+  deleteTeamPptController,
   registerTeamController,
   resendVerificationEmailController,
   resumeApplicationController,
@@ -56,6 +57,7 @@ router.post(
   handlePptUpload,
   uploadTeamPptController
 );
+router.delete("/resume/:token/ppt", publicTeamLimiter, deleteTeamPptController);
 
 router.post("/payment/order", publicTeamLimiter, createPaymentOrderController);
 router.post("/payment/verify", publicTeamLimiter, verifyPaymentController);

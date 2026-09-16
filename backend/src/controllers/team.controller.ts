@@ -7,6 +7,7 @@ import {
 } from "../validators/team.validator";
 import {
   confirmRegistration,
+  deleteTeamPpt,
   registerTeam,
   resendVerificationEmail,
   resumeApplication,
@@ -347,7 +348,7 @@ export const uploadTeamPptController = async (
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "No file was uploaded. Please attach a .ppt or .pptx file.",
+        message: "No file was uploaded. Please attach a .ppt, .pptx, or .pdf file.",
       });
     }
 
@@ -385,6 +386,57 @@ export const uploadTeamPptController = async (
     return res.status(500).json({
       success: false,
       message: "Failed to upload PPT. Please try again.",
+    });
+  }
+};
+
+export const deleteTeamPptController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { token } = req.params;
+
+    if (typeof token !== "string" || !token) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid resume token",
+      });
+    }
+
+    await deleteTeamPpt(token);
+
+    return res.status(200).json({
+      success: true,
+      message: "PPT deleted successfully.",
+    });
+  } catch (error) {
+    req.log.error({ err: error }, "Delete team PPT error");
+
+    if (error instanceof Error) {
+      if (error.message === "INVALID_TOKEN") {
+        return res.status(404).json({
+          success: false,
+          message: "This link is invalid.",
+        });
+      }
+      if (error.message === "TOKEN_EXPIRED") {
+        return res.status(410).json({
+          success: false,
+          message: "This link has expired. Please request a new one.",
+        });
+      }
+      if (error.message === "Team not found" || error.message === "No PPT submitted for this team") {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      if (error.message.includes("already been submitted")) {
+        return res.status(409).json({ success: false, message: error.message });
+      }
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete PPT. Please try again.",
     });
   }
 };

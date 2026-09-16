@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { resumeApplication, uploadTeamPpt } from "../../services/registration.service";
+import { deleteTeamPpt, resumeApplication, uploadTeamPpt } from "../../services/registration.service";
 import { createPaymentOrder, verifyPayment } from "../../services/payment.service";
 import { useToast } from "../../hooks/useToast";
 import { getApiErrorMessage } from "../../lib/apiError";
@@ -218,10 +218,15 @@ function PptUploadSection({
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [submission, setSubmission] = useState(initialSubmission);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Selecting a file only stages it — nothing is sent until the leader
+  // explicitly confirms, so an accidental/wrong file pick never uploads
+  // straight away.
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -232,15 +237,23 @@ function PptUploadSection({
     }
 
     setError("");
+    setPendingFile(file);
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!pendingFile) return;
+
+    setError("");
     setUploading(true);
 
     try {
-      const result = await uploadTeamPpt(token, file);
+      const result = await uploadTeamPpt(token, pendingFile);
       setSubmission({
         fileName: result.data.fileName,
         fileSizeBytes: result.data.fileSizeBytes,
         updatedAt: new Date().toISOString(),
       });
+      setPendingFile(null);
       toast.success("PPT uploaded successfully.");
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to upload PPT. Please try again."));
@@ -249,21 +262,96 @@ function PptUploadSection({
     }
   };
 
+  const handleDelete = async () => {
+    if (!submission) return;
+    if (!window.confirm(`Delete "${submission.fileName}"? You'll need to upload a new file before judging.`)) {
+      return;
+    }
+
+    setError("");
+    setDeleting(true);
+
+    try {
+      await deleteTeamPpt(token);
+      setSubmission(null);
+      toast.success("PPT deleted.");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Failed to delete PPT. Please try again."));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const busy = uploading || deleting;
+
   return (
     <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-sm">
       <p className="font-semibold text-white">Presentation (PPT)</p>
 
-      {submission ? (
-        <div className="mt-2 flex items-center justify-between gap-3 text-slate-300">
+      {pendingFile ? (
+        <div className="mt-2 rounded-xl border border-purple-500/25 bg-purple-500/10 p-3">
+          <p className="truncate text-slate-200">{pendingFile.name}</p>
+          <p className="text-xs text-slate-400">
+            {(pendingFile.size / (1024 * 1024)).toFixed(1)} MB · Ready to upload
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={handleConfirmUpload}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {uploading ? "Uploading…" : "Confirm Upload"}
+            </button>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => setPendingFile(null)}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 px-4 text-sm font-medium text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : submission ? (
+        <div className="mt-2">
           <div className="min-w-0">
-            <p className="truncate">{submission.fileName}</p>
+            <p className="truncate text-slate-300">{submission.fileName}</p>
             <p className="text-xs text-slate-500">
               {(submission.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB · Uploaded {formatDateTime(submission.updatedAt)}
             </p>
           </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-purple-400/40 bg-purple-500/10 text-sm font-semibold text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleDelete}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 text-sm font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          </div>
         </div>
       ) : (
-        <p className="mt-2 text-slate-400">No presentation uploaded yet.</p>
+        <>
+          <p className="mt-2 text-slate-400">No presentation uploaded yet.</p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-purple-400/40 bg-purple-500/10 text-sm font-semibold text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Choose File
+          </button>
+        </>
       )}
 
       {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
@@ -271,21 +359,13 @@ function PptUploadSection({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ppt,.pptx"
+        accept=".ppt,.pptx,.pdf"
         onChange={handleFileChange}
         className="hidden"
-        disabled={uploading}
+        disabled={busy}
       />
-      <button
-        type="button"
-        disabled={uploading}
-        onClick={() => fileInputRef.current?.click()}
-        className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-purple-400/40 bg-purple-500/10 text-sm font-semibold text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {uploading ? "Uploading…" : submission ? "Replace PPT" : "Upload PPT"}
-      </button>
       <p className="mt-2 text-center text-xs text-slate-500">
-        Only .ppt or .pptx files are supported · Max size 35MB
+        Only .ppt, .pptx, or .pdf files are supported · Max size 35MB
       </p>
     </div>
   );

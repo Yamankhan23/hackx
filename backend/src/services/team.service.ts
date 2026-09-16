@@ -1395,16 +1395,14 @@ export const updateTeam = async (
 };
 
 // ---------------------------------------------------------
-// PPT submission (leader upload, admin review/download)
+// PPT submission (leader upload/delete, admin review/download)
 // ---------------------------------------------------------
 
-// Same leader-auth + editable-status rules as updateTeam above: the resume
-// token is the only credential, and upload is only allowed while the team is
-// still DRAFT or CONFIRMED (matches the same edit window as team details).
-export const uploadTeamPpt = async (
-  resumeToken: string,
-  file: { buffer: Buffer; originalname: string; mimetype: string; size: number }
-) => {
+// Shared by uploadTeamPpt and deleteTeamPpt below: same leader-auth +
+// editable-status rules as updateTeam above — the resume token is the only
+// credential, and both actions are only allowed while the team is still
+// DRAFT or CONFIRMED (matches the same edit window as team details).
+const authenticateLeaderForPptEdit = async (resumeToken: string) => {
   const tokenHash = hashVerificationToken(resumeToken);
 
   const [leader] = await db
@@ -1453,6 +1451,15 @@ export const uploadTeamPpt = async (
     );
   }
 
+  return { leaderId: leader.id, team };
+};
+
+export const uploadTeamPpt = async (
+  resumeToken: string,
+  file: { buffer: Buffer; originalname: string; mimetype: string; size: number }
+) => {
+  const { leaderId, team } = await authenticateLeaderForPptEdit(resumeToken);
+
   const [existing] = await db
     .select({
       id: pptSubmissions.id,
@@ -1476,7 +1483,7 @@ export const uploadTeamPpt = async (
         fileName: file.originalname,
         mimeType: file.mimetype,
         fileSizeBytes: file.size,
-        uploadedByMemberId: leader.id,
+        uploadedByMemberId: leaderId,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(pptSubmissions.id, existing.id));
@@ -1494,7 +1501,7 @@ export const uploadTeamPpt = async (
   } else {
     await db.insert(pptSubmissions).values({
       teamId: team.id,
-      uploadedByMemberId: leader.id,
+      uploadedByMemberId: leaderId,
       driveFileId,
       fileName: file.originalname,
       mimeType: file.mimetype,
@@ -1506,6 +1513,34 @@ export const uploadTeamPpt = async (
     fileName: file.originalname,
     fileSizeBytes: file.size,
   };
+};
+
+export const deleteTeamPpt = async (resumeToken: string) => {
+  const { team } = await authenticateLeaderForPptEdit(resumeToken);
+
+  const [existing] = await db
+    .select({
+      id: pptSubmissions.id,
+      driveFileId: pptSubmissions.driveFileId,
+    })
+    .from(pptSubmissions)
+    .where(eq(pptSubmissions.teamId, team.id))
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("No PPT submitted for this team");
+  }
+
+  await db.delete(pptSubmissions).where(eq(pptSubmissions.id, existing.id));
+
+  try {
+    await deletePptFromDrive(existing.driveFileId);
+  } catch (error) {
+    logger.warn(
+      { err: error, teamId: team.teamId },
+      "Failed to delete PPT from Drive after removing its submission row"
+    );
+  }
 };
 
 // Admin download proxy: looks up the stored Drive file id by the team's
