@@ -26,7 +26,7 @@ const steps: Step[] = [
     title: "Registration",
     startAt: "2026-08-24T00:00:00+05:30",
     endAt: "2026-09-17T23:59:00+05:30",
-    note: "Closes on 17 September 2026",
+    note: "Closes before Round 1 begins",
     desc: "Register your team and pick your domain to lock in your spot.",
   },
   {
