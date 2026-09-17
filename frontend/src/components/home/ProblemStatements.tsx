@@ -177,6 +177,19 @@ export function ProblemStatements({
                       </p>
                     </div>
                   </div>
+                  <div className="relative mt-4 flex items-center gap-1.5 text-xs font-medium text-purple-300/80 transition group-hover:text-purple-200">
+                    <span>View problem statements</span>
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 transition-transform duration-300 group-hover:translate-x-1"
+                    >
+                      <path d="M4 10h12m0 0-4-4m4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
                   <span className="pointer-events-none absolute bottom-3 right-4 text-3xl font-black text-white/5 transition group-hover:text-white/10">
                     {String(i + 1).padStart(2, "0")}
                   </span>
