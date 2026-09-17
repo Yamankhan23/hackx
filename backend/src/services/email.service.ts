@@ -32,7 +32,7 @@ export const sendVerificationEmail = async ({
       ctaLabel: "Verify Email Address",
       ctaUrl: verificationUrl,
       footerNote:
-        "This link expires in 24 hours. If you didn't expect this email, you can safely ignore it. — MUSA CodeX 2026 Team",
+        "This link expires in 3 days. If you didn't expect this email, you can safely ignore it. — MUSA CodeX 2026 Team",
     }),
   });
 
@@ -75,7 +75,7 @@ export const sendApplicationResumeEmail = async ({
       ctaLabel: "Continue Your Application",
       ctaUrl: resumeUrl,
       footerNote:
-        "This link expires in 24 hours. If you didn't request this email, you can safely ignore it. — MUSA CodeX 2026 Team",
+        "This link expires in 3 days. If you didn't request this email, you can safely ignore it. — MUSA CodeX 2026 Team",
     }),
   });
 
@@ -120,7 +120,7 @@ export const sendConfirmRegistrationEmail = async ({
       ctaLabel: "Confirm Registration",
       ctaUrl: confirmUrl,
       footerNote:
-        "This link expires in 24 hours. If you didn't request this, you can safely ignore it. — MUSA CodeX 2026 Team",
+        "This link expires in 3 days. If you didn't request this, you can safely ignore it. — MUSA CodeX 2026 Team",
     }),
   });
 
@@ -216,7 +216,7 @@ export const sendRound2SelectionEmail = async ({
       ctaLabel: `Pay ₹${amount} & Confirm Seat`,
       ctaUrl: paymentUrl,
       footerNote:
-        "This link expires in 24 hours — you can request a new one anytime from the homepage. — MUSA CodeX 2026 Team",
+        "This link expires in 3 days — you can request a new one anytime from the homepage. — MUSA CodeX 2026 Team",
     }),
   });
 
@@ -263,7 +263,7 @@ export const sendPaymentLinkEmail = async ({
       ctaLabel: `Pay ₹${amount} Now`,
       ctaUrl: paymentUrl,
       footerNote:
-        "This link expires in 24 hours — you can request a new one anytime from the homepage. — MUSA CodeX 2026 Team",
+        "This link expires in 3 days — you can request a new one anytime from the homepage. — MUSA CodeX 2026 Team",
     }),
   });
 

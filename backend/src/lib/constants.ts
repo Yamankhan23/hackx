@@ -1,4 +1,4 @@
-export const VERIFICATION_EXPIRY_HOURS = 24;
+export const VERIFICATION_EXPIRY_HOURS = 72;
 
 // Pinned explicitly on both sign and verify so a future change to one side
 // can't silently drift from the other, and so verify never falls back to
