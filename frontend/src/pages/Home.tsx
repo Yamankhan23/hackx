@@ -16,6 +16,7 @@ import { Footer } from "../components/home/Footer";
 import { sendResumeLink } from "../services/registration.service";
 import { getApiErrorMessage } from "../lib/apiError";
 import { useProblemStatements } from "../hooks/useProblemStatements";
+import { isApplicationClosed } from "../lib/constants";
 
 export default function Home() {
   const { statements, loaded } = useProblemStatements();
@@ -73,35 +74,45 @@ export default function Home() {
               Already started?
             </p>
             <h2 className="mt-1 text-lg font-semibold">Continue Your Application</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Enter the team leader&apos;s email to receive a link to resume your draft.
-            </p>
 
-            <form className="mt-4 grid gap-3" onSubmit={handleSendResumeLink}>
-              <input
-                type="email"
-                value={resumeEmail}
-                onChange={(e) => setResumeEmail(e.target.value)}
-                placeholder="leader@example.com"
-                className="h-12 w-full rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
-              />
+            {isApplicationClosed() ? (
+              <p className="mt-3 text-sm text-slate-400">
+                Applications are now closed. We&apos;re no longer accepting PPT
+                submissions or edits for MUSA CodeX 2026.
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-slate-400">
+                  Enter the team leader&apos;s email to receive a link to resume your draft.
+                </p>
 
-              {resumeError ? (
-                <p className="text-sm text-rose-300">{resumeError}</p>
-              ) : null}
+                <form className="mt-4 grid gap-3" onSubmit={handleSendResumeLink}>
+                  <input
+                    type="email"
+                    value={resumeEmail}
+                    onChange={(e) => setResumeEmail(e.target.value)}
+                    placeholder="leader@example.com"
+                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-900/90 px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20"
+                  />
 
-              {resumeSuccess ? (
-                <p className="text-sm text-emerald-300">{resumeSuccess}</p>
-              ) : null}
+                  {resumeError ? (
+                    <p className="text-sm text-rose-300">{resumeError}</p>
+                  ) : null}
 
-              <button
-                type="submit"
-                disabled={resumeLoading}
-                className="h-12 rounded-xl border border-purple-400/40 bg-purple-500/10 text-sm font-semibold text-purple-100 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {resumeLoading ? "Sending..." : "Send Resume Link"}
-              </button>
-            </form>
+                  {resumeSuccess ? (
+                    <p className="text-sm text-emerald-300">{resumeSuccess}</p>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    disabled={resumeLoading}
+                    className="h-12 rounded-xl border border-purple-400/40 bg-purple-500/10 text-sm font-semibold text-purple-100 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {resumeLoading ? "Sending..." : "Send Resume Link"}
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         </section>
 

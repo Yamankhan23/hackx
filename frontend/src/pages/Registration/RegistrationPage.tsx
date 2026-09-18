@@ -18,7 +18,7 @@ import {
   updateTeam,
 } from "../../services/registration.service";
 import { getApiErrorMessage } from "../../lib/apiError";
-import { REGISTRATION_CLOSES_AT } from "../../lib/constants";
+import { REGISTRATION_CLOSES_AT, isApplicationClosed } from "../../lib/constants";
 import type {
   College,
   Domain,
@@ -60,6 +60,11 @@ const [generalError, setGeneralError] = useState("");
   // already started before the cutoff can still finish it.
   const registrationClosed =
     !resumeToken && Date.now() >= new Date(REGISTRATION_CLOSES_AT).getTime();
+
+  // We've stopped accepting PPT submissions entirely, so unlike
+  // registrationClosed above, this also blocks resuming/editing an
+  // existing draft via a resume token.
+  const applicationClosed = isApplicationClosed();
 
   const form = useForm<RegistrationFormValues, unknown, RegistrationFormValues>({
     resolver: zodResolver(registrationSchema),
@@ -122,7 +127,7 @@ fetchColleges()
   }, []);
 
   useEffect(() => {
-    if (!resumeToken) {
+    if (!resumeToken || applicationClosed) {
       return;
     }
 
@@ -173,7 +178,7 @@ fetchColleges()
     return () => {
       cancelled = true;
     };
-  }, [resumeToken, applyResumeDraft, navigate]);
+  }, [resumeToken, applicationClosed, applyResumeDraft, navigate]);
 
   const selectedDomain = domains.find(
     (domain) => String(domain.id) === form.watch("domainId")
@@ -281,7 +286,12 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
             </div>
           ) : null}
 
-          {registrationClosed ? (
+          {applicationClosed ? (
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/75 p-6 text-center text-sm text-slate-300">
+              Applications for MUSA CodeX 2026 are now closed. We&apos;re no
+              longer accepting new registrations, edits, or PPT submissions.
+            </div>
+          ) : registrationClosed ? (
             <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/75 p-6 text-center text-sm text-slate-300">
               Registration for MUSA CodeX 2026 is now closed. If you already
               registered, use "Continue Application" from the home page to

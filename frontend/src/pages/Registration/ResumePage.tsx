@@ -5,6 +5,7 @@ import { createPaymentOrder, verifyPayment } from "../../services/payment.servic
 import { useToast } from "../../hooks/useToast";
 import { getApiErrorMessage } from "../../lib/apiError";
 import { formatDateTime } from "../../lib/formatDate";
+import { isApplicationClosed } from "../../lib/constants";
 import type { PptSubmission, ResumeApplicationResponse } from "../../types/registration";
 
 // Mirrors the backend's multer limit (see upload.middleware.ts) — checked
@@ -20,6 +21,7 @@ type LoadState =
 export function ResumePage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
+  const applicationClosed = isApplicationClosed();
   const [state, setState] = useState<LoadState>(() =>
     token
       ? { status: "loading" }
@@ -190,18 +192,31 @@ export function ResumePage() {
           ))}
         </div>
 
-        <Link
-          to={`/register?token=${encodeURIComponent(token)}`}
-          className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
-        >
-          Edit Team Details
-        </Link>
+        {applicationClosed ? (
+          <p className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-center text-sm text-slate-400">
+            Editing is closed. Contact the organizers if you need to change your
+            team details.
+          </p>
+        ) : (
+          <Link
+            to={`/register?token=${encodeURIComponent(token)}`}
+            className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white"
+          >
+            Edit Team Details
+          </Link>
+        )}
 
         {data.team.status === "CONFIRMED" && (
-          <PptUploadSection
-            token={token}
-            initialSubmission={data.team.pptSubmission ?? null}
-          />
+          applicationClosed ? (
+            <p className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-center text-sm text-slate-400">
+              We&apos;re no longer accepting PPT submissions.
+            </p>
+          ) : (
+            <PptUploadSection
+              token={token}
+              initialSubmission={data.team.pptSubmission ?? null}
+            />
+          )
         )}
       </Card>
     </Shell>

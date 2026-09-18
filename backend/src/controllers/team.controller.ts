@@ -17,7 +17,14 @@ import {
   verifyEmail,
 } from "../services/team.service";
 import { friendlyDbErrorMessage } from "../lib/db-errors";
-import { REGISTRATION_CLOSES_AT } from "../lib/constants";
+import { REGISTRATION_CLOSES_AT, isApplicationClosed } from "../lib/constants";
+
+const applicationClosedResponse = (res: Response) =>
+  res.status(403).json({
+    success: false,
+    code: "APPLICATION_CLOSED",
+    message: "Applications are closed. We're no longer accepting continue-application requests, edits, or PPT submissions.",
+  });
 
 export const registerTeamController = async (
   req: Request,
@@ -154,6 +161,10 @@ export const continueApplicationController = async (
   res: Response
 ) => {
   try {
+    if (isApplicationClosed()) {
+      return applicationClosedResponse(res);
+    }
+
     const { email } = continueApplicationSchema.parse(req.body);
 
     const result = await sendResumeLink(email);
@@ -274,6 +285,10 @@ export const updateTeamController = async (
   res: Response
 ) => {
   try {
+    if (isApplicationClosed()) {
+      return applicationClosedResponse(res);
+    }
+
     const { token } = req.params;
 
     if (typeof token !== "string" || !token) {
@@ -345,6 +360,10 @@ export const uploadTeamPptController = async (
   res: Response
 ) => {
   try {
+    if (isApplicationClosed()) {
+      return applicationClosedResponse(res);
+    }
+
     const { token } = req.params;
 
     if (typeof token !== "string" || !token) {
@@ -404,6 +423,10 @@ export const deleteTeamPptController = async (
   res: Response
 ) => {
   try {
+    if (isApplicationClosed()) {
+      return applicationClosedResponse(res);
+    }
+
     const { token } = req.params;
 
     if (typeof token !== "string" || !token) {

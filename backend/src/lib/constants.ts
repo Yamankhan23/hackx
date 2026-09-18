@@ -5,6 +5,17 @@ export const VERIFICATION_EXPIRY_HOURS = 72;
 // token — only new `/register` submissions are rejected past this point.
 export const REGISTRATION_CLOSES_AT = "2026-09-18T15:00:00+05:30";
 
+// Hard cutoff for new resume-link requests, editing a draft, and PPT
+// upload/delete — we've stopped accepting PPT submissions altogether.
+// Deliberately does NOT gate loading a draft (GET /resume/:token) or
+// payment (order creation/verification): admin-issued round 2 links still
+// need to load and let a team pay. Set in the past so it's effective
+// immediately.
+export const APPLICATION_CLOSES_AT = "2026-09-18T00:00:00+05:30";
+
+export const isApplicationClosed = () =>
+  Date.now() >= new Date(APPLICATION_CLOSES_AT).getTime();
+
 // Pinned explicitly on both sign and verify so a future change to one side
 // can't silently drift from the other, and so verify never falls back to
 // accepting an unexpected algorithm.
