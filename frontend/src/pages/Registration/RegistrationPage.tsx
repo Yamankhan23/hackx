@@ -18,6 +18,7 @@ import {
   updateTeam,
 } from "../../services/registration.service";
 import { getApiErrorMessage } from "../../lib/apiError";
+import { REGISTRATION_CLOSES_AT } from "../../lib/constants";
 import type {
   College,
   Domain,
@@ -54,6 +55,11 @@ const [generalError, setGeneralError] = useState("");
   const [resumeDraft, setResumeDraft] = useState<ResumeDraft | null>(null);
   const [resumeTeamId, setResumeTeamId] = useState<string | null>(null);
   const [isResuming, setIsResuming] = useState(Boolean(resumeToken));
+
+  // Only gates brand-new registrations — someone resuming a draft they
+  // already started before the cutoff can still finish it.
+  const registrationClosed =
+    !resumeToken && Date.now() >= new Date(REGISTRATION_CLOSES_AT).getTime();
 
   const form = useForm<RegistrationFormValues, unknown, RegistrationFormValues>({
     resolver: zodResolver(registrationSchema),
@@ -275,7 +281,13 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
             </div>
           ) : null}
 
-          {isResuming ? (
+          {registrationClosed ? (
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/75 p-6 text-center text-sm text-slate-300">
+              Registration for MUSA CodeX 2026 is now closed. If you already
+              registered, use "Continue Application" from the home page to
+              pick up where you left off.
+            </div>
+          ) : isResuming ? (
             <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/75 p-6 text-center text-sm text-slate-300">
               Loading your draft application...
             </div>

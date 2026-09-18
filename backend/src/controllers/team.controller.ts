@@ -17,12 +17,21 @@ import {
   verifyEmail,
 } from "../services/team.service";
 import { friendlyDbErrorMessage } from "../lib/db-errors";
+import { REGISTRATION_CLOSES_AT } from "../lib/constants";
 
 export const registerTeamController = async (
   req: Request,
   res: Response
 ) => {
   try {
+    if (Date.now() >= new Date(REGISTRATION_CLOSES_AT).getTime()) {
+      return res.status(403).json({
+        success: false,
+        code: "REGISTRATION_CLOSED",
+        message: "Registration is closed.",
+      });
+    }
+
     const validatedData = registerTeamSchema.parse(req.body);
 
     const result = await registerTeam(validatedData);

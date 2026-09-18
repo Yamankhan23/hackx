@@ -1,5 +1,10 @@
 export const VERIFICATION_EXPIRY_HOURS = 72;
 
+// Hard cutoff for accepting brand-new team registrations. Teams that
+// registered before this can still resume/pay/upload via their resume
+// token — only new `/register` submissions are rejected past this point.
+export const REGISTRATION_CLOSES_AT = "2026-09-18T15:00:00+05:30";
+
 // Pinned explicitly on both sign and verify so a future change to one side
 // can't silently drift from the other, and so verify never falls back to
 // accepting an unexpected algorithm.

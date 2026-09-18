@@ -2,6 +2,7 @@ import { SectionHeading } from "./SectionHeading";
 import { useInView } from "./useInView";
 import { useToast } from "../../hooks/useToast";
 import { cn } from "../../lib/utils";
+import { REGISTRATION_CLOSES_AT } from "../../lib/constants";
 
 type Step = {
   phase: string;
@@ -25,8 +26,8 @@ const steps: Step[] = [
     phase: "Phase 01",
     title: "Registration",
     startAt: "2026-08-24T00:00:00+05:30",
-    endAt: "2026-09-17T23:59:00+05:30",
-    note: "Closes before Round 1 begins",
+    endAt: REGISTRATION_CLOSES_AT,
+    note: "Closes at 3:00 PM, 18 September 2026",
     desc: "Register your team and pick your domain to lock in your spot.",
   },
   {
