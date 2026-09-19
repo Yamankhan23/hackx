@@ -8,6 +8,10 @@ import { VerifyEmailPage } from "./pages/Registration/VerifyEmailPage";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminSectionPage from "./pages/admin/SectionPage";
+import { PrivacyPolicyPage } from "./pages/legal/PrivacyPolicyPage";
+import { TermsPage } from "./pages/legal/TermsPage";
+import { RefundPolicyPage } from "./pages/legal/RefundPolicyPage";
+import { ContactPage } from "./pages/legal/ContactPage";
 import { ToastProvider } from "./context/ToastContext";
 import { ToastContainer } from "./components/ui/Toast";
 
@@ -25,6 +29,10 @@ export default function App() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/:section" element={<AdminSectionPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms-and-conditions" element={<TermsPage />} />
+          <Route path="/refund-policy" element={<RefundPolicyPage />} />
+          <Route path="/contact-us" element={<ContactPage />} />
         </Routes>
       </BrowserRouter>
       <ToastContainer />

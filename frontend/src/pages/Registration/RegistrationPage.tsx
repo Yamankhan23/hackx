@@ -342,7 +342,27 @@ const buildPayload = (values: RegistrationFormValues): RegisterTeamPayload => ({
                     />
                     <span>
                       I confirm that the information provided is accurate and complete, and I agree
-                      to the MUSA CodeX 2026 registration terms.
+                      to the MUSA CodeX 2026{" "}
+                      <a
+                        href="/terms-and-conditions"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-300 underline hover:text-white"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Terms & Conditions
+                      </a>{" "}
+                      and{" "}
+                      <a
+                        href="/refund-policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-300 underline hover:text-white"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Refund Policy
+                      </a>
+                      .
                     </span>
                   </label>
 

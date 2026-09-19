@@ -46,9 +46,9 @@ export function Footer() {
   return (
     <footer className="relative border-t border-white/10 bg-[#050816]">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-3 lg:grid-cols-5">
           {/* Brand */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-3 lg:col-span-2">
             <a href="#home" className="flex items-center gap-2.5">
               <img
                 src="/musa-logo.png"
@@ -107,6 +107,35 @@ export function Footer() {
                   className="text-sm font-medium text-white transition hover:text-purple-300"
                 >
                   Register Now
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Legal */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+              Legal
+            </p>
+            <ul className="mt-4 space-y-2.5">
+              <li>
+                <Link to="/privacy-policy" className="text-sm text-slate-400 transition hover:text-white">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link to="/terms-and-conditions" className="text-sm text-slate-400 transition hover:text-white">
+                  Terms & Conditions
+                </Link>
+              </li>
+              <li>
+                <Link to="/refund-policy" className="text-sm text-slate-400 transition hover:text-white">
+                  Refund Policy
+                </Link>
+              </li>
+              <li>
+                <Link to="/contact-us" className="text-sm text-slate-400 transition hover:text-white">
+                  Contact Us
                 </Link>
               </li>
             </ul>
